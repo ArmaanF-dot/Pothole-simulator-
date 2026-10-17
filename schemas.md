@@ -201,7 +201,7 @@ p30_peak, p30_rise, treatment_label, avoided_per_gbp, load_confidence, provision
 | column | type | meaning |
 |---|---|---|
 | `pays_back` | bool | `avoided_per_gbp >= 1.0` |
-| `confirmed_pothole` | bool | `open_fms_report` is true AND triage classifies that report as a road defect |
+| `confirmed_pothole` | bool | `confirmed_by != ""`: an open FixMyStreet report triaged as a road defect, or a crew record |
 | `confirmed_by` | str | one of `""` \| `"keyword"` \| `"gemini"` \| `"crew"` (`""` = not confirmed). If several apply, precedence is **crew > gemini > keyword** |
 | `confirmed_source_id` | str | FixMyStreet request id for `keyword`/`gemini`; inspection/feedback id for `crew`. **Required if `confirmed_by != ""`**, blank otherwise |
 | `confirmed_is_synthetic` | bool | true for `crew` records from simulated feedback. The dashboard labels these "Simulated crew report" and leaves them out of the header's confirmed total |
