@@ -22,3 +22,10 @@ matplotlib>=3.11.2       # calibration plot
 
 # Tests
 pytest>=9.1.1
+
+# Product (lane C): API, officer page, report triage
+fastapi>=0.143.3
+uvicorn[standard]>=0.54.0
+google-genai>=2.31.0     # Gemini triage
+python-dotenv>=1.2.4     # reads GEMINI_API_KEY from .env
+httpx>=0.28.1            # FastAPI TestClient in tests
