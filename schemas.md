@@ -76,6 +76,12 @@ One row per piece of road, all cities stacked. Built from OSM (ODbL) `network_ty
 | geometry | WKB | EPSG:4326 LineString |
 | source | str | `osm` |
 
+## 2b. Segment context: `data/processed/segment_context.parquet` (lane A)
+`segment_id, city, cycle_route (bool), near_school_hospital (bool), source` (OSM, ODbL). For the urgency consequence weights.
+`cycle_route`: way in an OSM `route=bicycle` relation or tagged with an on-road cycle lane/track. `near_school_hospital`:
+OSM `amenity=school|college|hospital` within 100 m. Separate file so rebuilding segments never drops it: join on `segment_id`.
+Build: `python -m roadsense.features.context Southampton`.
+
 ## 3. Traffic load: `data/processed/load.parquet` (M3)
 | Column | Type | Notes |
 |---|---|---|
