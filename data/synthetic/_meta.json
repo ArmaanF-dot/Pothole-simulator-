@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-10-17T11:30:43+00:00",
+  "seed": 2026,
+  "version": "1.0",
+  "as_of": "2026-10-12",
+  "inputs": {
+    "segments": "mock",
+    "esal_day": "mock",
+    "weather": "mock"
+  },
+  "rows": {
+    "resurfacing.csv": 9286,
+    "potholes.csv": 21494,
+    "streetlights.csv": 16723,
+    "light_faults.csv": 12790,
+    "crew_outcomes.csv": 300
+  },
+  "potholes_by_reported_year": {
+    "2021": 4037,
+    "2022": 3677,
+    "2023": 3896,
+    "2024": 4190,
+    "2025": 3119,
+    "2026": 2575
+  },
+  "currently_dark": 58,
+  "note": "All files in this folder are SYNTHETIC."
+}
