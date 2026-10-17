@@ -136,6 +136,11 @@ class Service:
             self._cities[city] = CityView(self.cfg, city, self.root)
         return self._cities[city]
 
+    def city_triage(self, city: str) -> dict | None:
+        """Cached read-only triage for a map-only city (python -m roadsense.agent.city_triage <city>)."""
+        from roadsense.agent.city_triage import load_cached
+        return load_cached(self.cfg, city, self.root)
+
     def other_cities(self) -> list[str]:
         from roadsense.api.cities import available
         return [c for c in available(self.cfg, self.root) if c != self.cfg["coverage"]["city"]]
@@ -292,12 +297,15 @@ class Service:
                                      "currently_dark", "dark_source", "uses_synthetic", "name", "ward",
                                      "replacement_overdue", "due", "dark_since"])}
 
-    def open_reports(self) -> dict:
-        """Currently open real FixMyStreet pothole reports: shown at urgency 100 with their date."""
-        f = self.fms
+    def open_reports(self, city: str | None = None) -> dict:
+        """Currently open real FixMyStreet pothole reports: shown at urgency 100 with their date.
+        For a map-only second city the same open window applies; its reports are shown without urgency."""
+        other = bool(city) and city != self.cfg["coverage"]["city"]
+        f = I.load_fms(self.cfg, self.root, city=city) if other else self.fms
         cutoff = pd.Timestamp(self.now or datetime.now(timezone.utc)).tz_localize(None) - pd.Timedelta(days=self.cfg["triage"]["open_report_days"])
         o = f[(f["status"] == "open") & (f["requested"] >= cutoff)]
-        return {"count": len(o), "window_days": self.cfg["triage"]["open_report_days"], "urgency": 100,
+        return {"count": len(o), "window_days": self.cfg["triage"]["open_report_days"], "urgency": None if other else 100,
+                "city": city if other else self.cfg["coverage"]["city"],
                 "source": "fixmystreet", "retrieved_at": f["retrieved_at"].iloc[0] if len(f) else None,
                 "reports": records(o.assign(reported_at=o["requested"].dt.strftime("%Y-%m-%d")),
                                    ["id", "category", "reported_at", "status", "lat", "lon", "title"])}

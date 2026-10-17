@@ -108,8 +108,7 @@ def _segment_defaults(seg: pd.DataFrame) -> pd.DataFrame:
             seg[c] = v
     seg["name"] = seg["name"].fillna("")
     seg["ref"] = seg["ref"].fillna("")
-    seg["name"] = seg["name"].where(seg["name"] != "", seg["ref"])
-    seg["name"] = seg["name"].where(seg["name"] != "", "Unnamed " + seg["highway"].astype(str) + " road")
+    seg["name"] = display_names(seg)
     if "load_source" not in seg:
         seg["load_source"] = None
     seg["load_source"] = seg["load_source"].fillna("class_median")
@@ -117,6 +116,60 @@ def _segment_defaults(seg: pd.DataFrame) -> pd.DataFrame:
     if "input_source" not in seg:
         seg["input_source"] = "real"
     return seg
+
+
+HIGHWAY_RANK = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential"]
+
+
+def display_names(seg: pd.DataFrame, max_hops: int = 6) -> pd.Series:
+    """Road name for the page: OSM name, else ref, else for an unnamed slip road (*_link) the road it
+    joins ("Slip road off A33"), walking along connected unnamed slip-road pieces; else
+    "Unnamed slip road near <ward>"; other unnamed roads stay "Unnamed <highway> road"."""
+    name = seg["name"].fillna("").astype(str)
+    ref = seg["ref"].fillna("").astype(str) if "ref" in seg else pd.Series("", index=seg.index)
+    hw = seg["highway"].fillna("").astype(str)
+    base = name.where(name != "", ref)
+    out = base.where(base != "", "Unnamed " + hw + " road")
+    is_link = hw.str.endswith("_link")
+    todo = seg.index[(base == "") & is_link]
+    if len(todo) == 0:
+        return out
+    coords = seg["geometry"].map(_coords)
+    ends = {i: [tuple(np.round(c[0], 6)), tuple(np.round(c[-1], 6))] if c else [] for i, c in coords.items()}
+    node_segs: dict = {}
+    for i, e in ends.items():
+        for n in e:
+            node_segs.setdefault(n, []).append(i)
+    rank = {h: k for k, h in enumerate(HIGHWAY_RANK)}
+
+    def joined_road(i):
+        seen, frontier = {i}, [i]
+        for _ in range(max_hops):
+            found, nxt = [], []
+            for j in frontier:
+                for n in ends.get(j, []):
+                    for k in node_segs.get(n, []):
+                        if k in seen:
+                            continue
+                        seen.add(k)
+                        if base[k] != "":
+                            found.append(k)
+                        elif is_link[k]:
+                            nxt.append(k)
+            if found:
+                # prefer a road with a ref (A33), then the bigger road class
+                k = min(found, key=lambda k: (ref[k] == "", rank.get(hw[k].replace("_link", ""), 99)))
+                return ref[k] or name[k]
+            frontier = nxt
+            if not frontier:
+                break
+        return None
+
+    for i in todo:
+        road = joined_road(i)
+        ward = seg.at[i, "ward"] if "ward" in seg and isinstance(seg.at[i, "ward"], str) else None
+        out[i] = f"Slip road off {road}" if road else (f"Unnamed slip road near {ward}" if ward else "Unnamed slip road")
+    return out
 
 
 def _coords(geom) -> list[tuple[float, float]]:

@@ -106,8 +106,15 @@ def create_app(service: Service | None = None) -> FastAPI:
         return svc().lights_view(ward=ward, due=due, dark=dark, limit=limit, due_days=due_days)
 
     @app.get("/reports/open")
-    def open_reports():
-        return svc().open_reports()
+    def open_reports(city: str | None = None):
+        return svc().open_reports(city=city)
+
+    @app.get("/triage/city")
+    def city_triage(city: str):
+        r = svc().city_triage(city)
+        if r is None:
+            raise HTTPException(404, f"no cached triage for {city}: run python -m roadsense.agent.city_triage {city}")
+        return r
 
     @app.get("/reports/recent")
     def recent(n: int = 20):

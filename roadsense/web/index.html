@@ -50,9 +50,10 @@
         <button type="submit">Triage report</button>
         <button type="button" id="dup-btn" title="Submit the same real report again as a second resident would">Re-submit (duplicate)</button>
       </form>
-      <p class="muted small">Only public FixMyStreet text and photos of public roads are sent to Gemini. Dangerous road conditions:
+      <p id="triage-note" class="muted small">Only public FixMyStreet text and photos of public roads are sent to Gemini. Dangerous road conditions:
         <a id="official-link" target="_blank" rel="noopener">report to Southampton City Council</a>.</p>
       <div id="queue"></div>
+      <div id="city-triage" class="hidden"></div>
     </div>
     <div id="tab-lights" class="tab hidden">
       <p id="lights-head" class="muted"></p>
