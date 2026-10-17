@@ -1,0 +1,33 @@
+# Streetlight model evaluation
+
+_Generated 2026-10-17T11:41:55+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
+
+**The lamp register and fault history are SYNTHETIC** (Generators 3 and 4). The burn-hour clock is real: astral sunset to sunrise for Southampton, minus the council's 01:00 to 05:30 switch-off from 2023-12-01.
+
+## Fitted Weibull lifetimes (burn hours)
+
+| Unit type | Scale (h) | Shape | Units | Burnouts | Generator assumption |
+|---|---|---|---|---|---|
+| LED | 60,003 | 3.03 | 25,863 | 9,186 | scale 60,000, shape 3.0 |
+| legacy | 28,221 | 3.73 | 11 | 11 | scale 20,000, shape 2.5 |
+
+Recovering the generator's parameters is a pipeline check only.
+
+## Back-test: failures in the 90 days after 2026-07-14
+
+Refitted on data before the cutoff. 16,723 lamps, 282 with a fault in the window (base rate 0.017); the model expected 264.
+
+| Scorer | Precision in top 5%, any fault | Precision in top 5%, burnouts only |
+|---|---|---|
+| Weibull on burn hours by lamp type | 0.023 | 0.022 |
+| Baseline: install year only | 0.024 | 0.023 |
+| Random (base rate) | 0.017 | 0.011 |
+
+Almost every unit in service is an LED on the same burn-hour clock, so burn hours rank lamps much like install year does and the model only edges the baseline. Its value here is the calibrated probability and the replacement date, not the ranking. Electrical and damage faults (2% a year, random) cap precision for any scorer.
+
+## Current outputs
+
+- Lamps scored: 16,723; mean P(fail in 90 days) 0.025.
+- Due in 90 days (P >= 0.5 or replacement date within 90 days): 3,498.
+- Replacement overdue (cumulative failure already >= 0.5): 3,249.
+- Currently dark (failed in the last 30 days, not yet repaired): 58.

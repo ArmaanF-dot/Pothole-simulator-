@@ -28,3 +28,14 @@ mock row carries `input_source="mock"`. Mock wards are named "Mock ward 01..17".
 | `_meta.json` | seed, version, as_of, which inputs were mock, row counts |
 
 "Currently dark" lamps = `light_faults.csv` rows with status `open` and fault_date in the last 30 days.
+
+## Model outputs
+| File | Columns |
+|---|---|
+| `outputs/risk_<as_of>.parquet` | segment_id, ward, week_start, p7, p30, p30_w0..p30_w3 (this week and the next 3), p30_trend, wear_pct (0-100), reason_1..reason_3 (plain text, SHAP), weather_source, labels_synthetic, wear_synthetic, inputs_mock, model_version, as_of |
+| `outputs/lights_<as_of>.parquet` | lamp_id, segment_id, lat, lon, unit_type, unit_install_date, burn_hours, p_fail_90d, predicted_replacement_date, replacement_overdue, due_90d, currently_dark, dark_since, is_synthetic, source, as_of |
+| `data/models/` | risk_y7.txt / risk_y30.txt (LightGBM), *_calibrator.pkl (isotonic), risk_eval.json, lights_weibull.json |
+
+## Needed at the merge (shared files)
+- Makefile: `synthetic: python -m roadsense.synthetic`, `train: python -m roadsense.models.risk`, `lights: python -m roadsense.models.lights`. Run order: synthetic, train, then synthetic again so crew outcomes select from the model.
+- requirements.txt: numpy, pandas, pyarrow, pyyaml, scipy, shapely, lightgbm, scikit-learn, lifelines, shap, astral, tzdata, matplotlib, pytest.

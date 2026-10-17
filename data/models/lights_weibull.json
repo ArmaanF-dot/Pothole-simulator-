@@ -1,0 +1,45 @@
+{
+ "params": {
+  "LED": {
+   "scale_h": 60002.669533630426,
+   "shape": 3.0281266967046245,
+   "n": 25863,
+   "events": 9186
+  },
+  "legacy": {
+   "scale_h": 28220.527735004347,
+   "shape": 3.733213372121325,
+   "n": 11,
+   "events": 11
+  }
+ },
+ "other_fault_rate_per_year": 0.019916135329490058,
+ "backtest": {
+  "cutoff": "2026-07-14",
+  "lamps": 16723,
+  "failures_in_window": 282,
+  "base_rate": 0.01686300304969204,
+  "params_at_cutoff": {
+   "LED": {
+    "scale_h": 60007.35236980727,
+    "shape": 3.0296371193539793,
+    "n": 25714,
+    "events": 8999
+   },
+   "legacy": {
+    "scale_h": 28220.527735004347,
+    "shape": 3.733213372121325,
+    "n": 11,
+    "events": 11
+   }
+  },
+  "model_precision_top5": 0.022727272727272728,
+  "baseline_install_year_precision_top5": 0.023923444976076555,
+  "burnouts_in_window": 187,
+  "burnout_base_rate": 0.01118220414997309,
+  "model_precision_top5_burnout": 0.0215311004784689,
+  "baseline_install_year_precision_top5_burnout": 0.022727272727272728,
+  "expected_failures_model": 263.9789503468036
+ },
+ "version": "lights-v0.1"
+}
