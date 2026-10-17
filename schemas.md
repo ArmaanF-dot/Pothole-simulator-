@@ -197,6 +197,18 @@ p30_peak, p30_rise, treatment_label, avoided_per_gbp, load_confidence, provision
 - `load_confidence`: high / medium / low (see section 10). `provisional`: true when the forecast is STALE.
 - One dated file per run plus a `prevention_plan_latest.csv` copy (no symlinks: unreliable on Windows).
 
+#### Added for Merge 2: financial split
+| column | type | meaning |
+|---|---|---|
+| `pays_back` | bool | `avoided_per_gbp >= 1.0` |
+| `confirmed_pothole` | bool | `open_fms_report` is true AND triage classifies that report as a road defect |
+| `confirmed_by` | str | `gemini`, `keyword`, or empty if not confirmed |
+| `worth_treating` | bool | `pays_back OR confirmed_pothole`; drives the "Worth treating" tab |
+
+- `avoided_per_gbp` = expected reactive repair cost avoided over the treatment's life / treatment cost (not p30 only); horizon stated in `reports/cost.md`.
+- UI: "All roads" tab lists every row badged "Pays back xN" or "Loss maker xN". "Worth treating" tab lists `worth_treating` rows: confirmed first (by urgency), then pays-back (by `avoided_per_gbp`).
+- Confirmed rows with `pays_back = false` are shown as "Confirmed: must fix" (statutory repair duty), not as optional.
+
 ## 10. API JSON (lane C serves; field names = the columns above)
 - `GET /segments?ward=&band=` → GeoJSON FeatureCollection with **light properties** for the map (segment_id, name, ward,
   band, urgency, p30, load_confidence, uses_synthetic). `?detail=full` returns every field: segments.parquet fields
