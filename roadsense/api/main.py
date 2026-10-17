@@ -109,6 +109,16 @@ def create_app(service: Service | None = None) -> FastAPI:
     def open_reports(city: str | None = None):
         return svc().open_reports(city=city)
 
+    @app.get("/plan/inspection")
+    def inspection(city: str, top_n: int = 50):
+        s = svc()
+        if city == s.cfg["coverage"]["city"]:
+            raise HTTPException(400, f"{city} has the prevention plan: use /plan/prevention")
+        try:
+            return s.city_inspection(city, top_n=top_n)
+        except FileNotFoundError:
+            raise HTTPException(404, f"no risk file for {city}")
+
     @app.get("/triage/city")
     def city_triage(city: str):
         r = svc().city_triage(city)
