@@ -81,7 +81,31 @@ def test_run_end_to_end(world, tmp_path):
     assert set(res["loco"]) == {"Southampton", "Brighton"}
     sou = res["cities"]["Southampton"]
     assert sou["model"]["capture_top10_length"] > 0.1           # beats random length share on persistent hot spots
+    assert "physical_only" in sou and "_diff_model_minus_physical" in sou
+    imp = res["importance"]["Southampton"]
+    assert 0 <= imp["past_reports_share"] <= 1 and abs(sum(imp["groups"].values()) - 1) < 1e-6
     assert (tmp_path / "reports" / "real_risk_eval.md").exists()
+
+
+def test_physical_features_exclude_past_reports():
+    assert not set(real_risk.PHYSICAL) & set(real_risk.HISTORY)
+    assert set(real_risk.HISTORY) <= set(real_risk.FEATURES)
+    assert "city_code" not in real_risk.PHYSICAL
+
+
+def test_yearly_weather_uses_previous_year_only(world):
+    cfg, seg, rep = world
+    wx = pd.DataFrame({"ward": ["W"] * 3, "week_start": pd.to_datetime(["2016-03-07", "2017-03-06", "2018-03-05"]),
+                       "rain_30d": [10.0, 20.0, 30.0], "freeze_thaw_14d": [2.0, 4.0, 6.0], "hours_below_0_7d": [1.0, 2.0, 3.0],
+                       "rain_then_frost_7d": [0.0, 1.0, 2.0], "hot_days_7d": [0.0, 0.0, 1.0]})
+    yw = real_risk.yearly_weather(wx)
+    assert yw.set_index("year")["wx_rain_30d_mean"].to_dict() == {2016: 10.0, 2017: 20.0, 2018: 30.0}
+    seg2 = seg[seg["city"] == "Southampton"].copy()
+    seg2["ward"] = "W"
+    lab = real_risk.labels_from_reports(rep[rep["city"] == "Southampton"], seg2, CFG_A, 25)
+    t = real_risk.build_table(seg2, lab, wx=wx)
+    got = t.drop_duplicates("year").set_index("year")["wx_rain_30d_mean"]
+    assert got.loc[2017] == 10.0 and got.loc[2018] == 20.0 and np.isnan(got.loc[2016])
 
 
 def test_waits_for_segments(tmp_path):

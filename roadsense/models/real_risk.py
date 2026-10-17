@@ -30,8 +30,10 @@ HIGHWAY_CODE = {"primary": 3, "primary_link": 3, "trunk": 4, "trunk_link": 4, "s
                 "tertiary": 1, "tertiary_link": 1}
 STATIC = ["log_esal_day", "log_hgv_bus_aadf", "bus_routes", "bus_stop", "junction", "in_flood_area", "length_m", "highway_code",
           "is_main_road"]
+WEATHER = ["wx_rain_30d_mean", "wx_freeze_thaw", "wx_frost_hours", "wx_rain_then_frost", "wx_hot_days"]
 HISTORY = ["rep_prev1", "rep_prev2_3", "rep_nb_prev1", "rep_prev1_per_km"]
-FEATURES = STATIC + HISTORY + ["city_code"]
+PHYSICAL = STATIC + WEATHER                     # no past-report features at all
+FEATURES = PHYSICAL + HISTORY + ["city_code"]   # full model = physical + past reports
 MONOTONE = {"log_esal_day": 1, "log_hgv_bus_aadf": 1}
 TOP_LENGTH_FRAC = 0.10
 
@@ -62,7 +64,24 @@ def load_inputs(root: Path) -> dict | None:
             reports = pd.read_csv(p)
             reports.attrs["path"] = str(p.relative_to(root))
             break
-    return {"seg": seg, "labels": labels, "reports": reports}
+    wx_p = proc / "weather_weekly.parquet"
+    wx = pd.read_parquet(wx_p) if wx_p.exists() else None
+    return {"seg": seg, "labels": labels, "reports": reports, "wx": wx}
+
+
+def yearly_weather(wx: pd.DataFrame) -> pd.DataFrame:
+    """Ward x year weather summary. build_table joins year-1 to year, so a row never sees its own year."""
+    w = wx.copy()
+    w["year"] = pd.to_datetime(w["week_start"]).dt.year
+    g = w.groupby(["ward", "year"])
+    out = pd.DataFrame({
+        "wx_rain_30d_mean": g["rain_30d"].mean(),
+        "wx_freeze_thaw": g["freeze_thaw_14d"].sum() / 2.0,       # 14-day windows overlap twice in weekly rows
+        "wx_frost_hours": g["hours_below_0_7d"].sum(),
+        "wx_rain_then_frost": g["rain_then_frost_7d"].sum(),
+        "wx_hot_days": g["hot_days_7d"].sum(),
+    }).reset_index()
+    return out
 
 
 def snap_reports(reports: pd.DataFrame, seg: pd.DataFrame, radius_m: float) -> pd.DataFrame:
@@ -119,13 +138,14 @@ def split_for(city: str, year: int, cfg_a: dict) -> str:
 
 
 # --- table ----------------------------------------------------------------------------------
-def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 220.0) -> pd.DataFrame:
-    """Segment-year rows; history features use only the segment's earlier years."""
+def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 220.0, wx: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Segment-year rows; history features use only the segment's earlier years, weather only the previous year."""
     seg = seg.copy()
     if "city" not in seg:
         seg["city"] = "Southampton"
     s = pd.DataFrame({
         "segment_id": seg["segment_id"].values, "city": seg["city"].values,
+        "ward": seg["ward"].values if "ward" in seg else "",
         "log_esal_day": np.log1p(seg["esal_day"].astype(float).values) if "esal_day" in seg else np.nan,
         "log_hgv_bus_aadf": np.log1p(seg["hgv_bus_aadf"].astype(float).values) if "hgv_bus_aadf" in seg else np.nan,
         "bus_routes": seg["bus_routes"].astype(float).values if "bus_routes" in seg else np.nan,
@@ -178,6 +198,13 @@ def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 22
     df["rep_nb_prev1"] = nb_vals
     df["rep_prev1_per_km"] = df["rep_prev1"] / (df["length_m"] / 1000.0)
     df["city_code"] = pd.Categorical(df["city"])
+    if wx is not None and "ward" in seg:
+        yw = yearly_weather(wx)
+        yw["year"] = yw["year"] + 1                      # last year's weather predicts this year
+        df = df.merge(yw, on=["ward", "year"], how="left")
+    for c in WEATHER:
+        if c not in df:
+            df[c] = np.nan
     return df
 
 
@@ -209,18 +236,20 @@ def city_weights(df: pd.DataFrame) -> np.ndarray:
     return df["city"].map(f).values.astype(float)
 
 
-def fit(train: pd.DataFrame, cfg: dict):
+def fit(train: pd.DataFrame, cfg: dict, features: list[str] | None = None):
+    features = features or FEATURES
     import lightgbm as lgb
     params = dict(cfg["risk"]["lgbm"])
-    params.update(objective="binary", monotone_constraints=[MONOTONE.get(f, 0) for f in FEATURES],
+    params.update(objective="binary", monotone_constraints=[MONOTONE.get(f, 0) for f in features],
                   random_state=cfg["seed"], deterministic=True, force_row_wise=True, n_jobs=4,
                   min_child_samples=min(params.get("min_child_samples", 20), max(5, len(train) // 50)))
     m = lgb.LGBMClassifier(**params)
-    m.fit(train[FEATURES], train["had_report"].values, sample_weight=city_weights(train))
+    m.fit(train[features], train["had_report"].values, sample_weight=city_weights(train))
+    m.feature_names_used_ = list(features)
     return m
 
 
-SCORERS = ["model", "last_year_reports", "load_x_past_reports"]
+SCORERS = ["model", "physical_only", "last_year_reports", "load_x_past_reports"]
 BOOT_N, BOOT_SEED = 1000, 2026
 
 
@@ -270,15 +299,47 @@ def paired_bootstrap(test: pd.DataFrame, scores: dict, n: int = BOOT_N, seed: in
     d = draws["model"] - draws["last_year_reports"]
     out["_diff_model_minus_last_year"] = {"point": point["model"] - point["last_year_reports"], "ci95": ci(d),
                                           "share_model_ahead": float(np.mean(d > 0))}
+    if "physical_only" in scores:
+        d2 = draws["model"] - draws["physical_only"]
+        out["_diff_model_minus_physical"] = {"point": point["model"] - point["physical_only"], "ci95": ci(d2),
+                                             "share_model_ahead": float(np.mean(d2 > 0))}
+        d3 = draws["physical_only"] - draws["last_year_reports"]
+        out["_diff_physical_minus_last_year"] = {"point": point["physical_only"] - point["last_year_reports"], "ci95": ci(d3),
+                                                 "share_model_ahead": float(np.mean(d3 > 0))}
     out["_n"] = {"reports": int(test["n_reports"].sum()), "segments": int(len(seg_ids)), "rows": int(len(test)),
                  "years": [int(y) for y in years], "resamples": n, "seed": seed}
     return out
 
 
-def evaluate(model, test: pd.DataFrame, n: int = BOOT_N, seed: int = BOOT_SEED) -> dict:
+def evaluate(models, test: pd.DataFrame, n: int = BOOT_N, seed: int = BOOT_SEED) -> dict:
+    """`models` is a fitted model (full feature set) or {"model": m, "physical_only": m2}."""
     test = test.reset_index(drop=True)
-    scores = {"model": model.predict_proba(test[FEATURES])[:, 1], **baseline_scores(test)}
-    return paired_bootstrap(test, scores, n=n, seed=seed)
+    if not isinstance(models, dict):
+        models = {"model": models}
+    scores = {name: m.predict_proba(test[m.feature_names_used_])[:, 1] if hasattr(m, "feature_names_used_")
+              else m.predict_proba(test[FEATURES])[:, 1] for name, m in models.items()}
+    return paired_bootstrap(test, scores | baseline_scores(test), n=n, seed=seed)
+
+
+def feature_reliance(model, test: pd.DataFrame) -> dict:
+    """Mean |SHAP| (LightGBM exact tree contributions) share by feature group on the test rows."""
+    X = test[model.feature_names_used_]
+    contrib = model.booster_.predict(X, pred_contrib=True)[:, :-1]
+    m = np.abs(contrib).mean(axis=0)
+    share = m / m.sum() if m.sum() > 0 else m
+    by = dict(zip(model.feature_names_used_, share.tolist()))
+    groups = {
+        "past reports": [f for f in HISTORY],
+        "traffic load": ["log_esal_day", "log_hgv_bus_aadf"],
+        "weather": WEATHER,
+        "road class and length": ["highway_code", "is_main_road", "length_m"],
+        "bus, junction, flood": ["bus_routes", "bus_stop", "junction", "in_flood_area"],
+        "city": ["city_code"],
+    }
+    g = {k: float(sum(by.get(f, 0.0) for f in fs)) for k, fs in groups.items()}
+    top = sorted(by.items(), key=lambda kv: -kv[1])[:5]
+    return {"groups": g, "past_reports_share": g["past reports"], "top_features": [(k, float(v)) for k, v in top],
+            "n_rows": int(len(test))}
 
 
 def _pct(x, dp=0):
@@ -295,6 +356,15 @@ def summary_sentence(city: str, r: dict, label: str) -> str:
         s += f"The {gap} excludes 0, so the model beats the baseline."
     else:
         s += f"The {gap} includes 0, so the model matches the baseline rather than beats it."
+    if "physical_only" in r:
+        p, dp = r["physical_only"], r["_diff_physical_minus_last_year"]
+        s += (f" Physical-only model (no past reports): {_pct(p['capture_top10_length'])} ({_pct(p['ci95'][0])}-{_pct(p['ci95'][1])}); "
+              f"vs last-year baseline {_pct(dp['point'])} (95% {_pct(dp['ci95'][0])} to {_pct(dp['ci95'][1])}), "
+              + ("so it beats the baseline." if dp["ci95"][0] > 0 else
+                 "so it matches the baseline rather than beats it." if dp["ci95"][1] >= 0 else "so it falls short of the baseline."))
+        dm = r["_diff_model_minus_physical"]
+        s += (f" Full model vs physical-only: {_pct(dm['point'])} (95% {_pct(dm['ci95'][0])} to {_pct(dm['ci95'][1])}), "
+              + ("past reports add real signal." if dm["ci95"][0] > 0 else "past reports add no clear signal."))
     if r["_n"]["reports"] < 100:
         s += f" Only {r['_n']['reports']} reports, so the interval is wide."
     return s
@@ -308,6 +378,11 @@ def results_table(r: dict) -> list[str]:
                      f"{_pct(r[k]['ci95'][0], 1)} to {_pct(r[k]['ci95'][1], 1)} |")
     d = r["_diff_model_minus_last_year"]
     L.append(f"| model minus last-year (paired) | {_pct(d['point'], 1)} | {_pct(d['ci95'][0], 1)} to {_pct(d['ci95'][1], 1)} |")
+    for key, label in [("_diff_physical_minus_last_year", "physical-only minus last-year (paired)"),
+                       ("_diff_model_minus_physical", "model minus physical-only (paired)")]:
+        if key in r:
+            x = r[key]
+            L.append(f"| {label} | {_pct(x['point'], 1)} | {_pct(x['ci95'][0], 1)} to {_pct(x['ci95'][1], 1)} |")
     n = r["_n"]
     L += ["", f"n = {n['reports']:,} test reports on {n['segments']:,} test segments ({', '.join(map(str, n['years']))}). "
           f"Model ahead of the last-year baseline in {_pct(d['share_model_ahead'])} of {n['resamples']:,} resamples (seed {n['seed']}).", ""]
@@ -325,8 +400,21 @@ def risk_eval_section(res: dict, src: str, provenance: str = "") -> str:
          "resample. FixMyStreet counts measure reporting, not true pothole rates.", ""]
     blocks = [(c, r, "test years") for c, r in res["cities"].items()]
     blocks += [(c, r, "frozen 2026 check (Jan to Oct)") for c, r in (res.get("frozen_2026") or {}).items()]
+    L += ["**Full model** = physical features + past-report features (reports on the segment and its neighbours in earlier "
+          "years). **Physical only** = same setup with no past-report feature at all: traffic load (esal_day, DfT HGV and bus flow), "
+          "bus routes, bus stop, junction, flood area, highway class, road length, and the previous year's ward weather "
+          "(rain, freeze-thaw, frost hours, rain-then-frost, hot days).", ""]
     for c, r, label in blocks:
         L += [f"### {c}, {label}", ""] + results_table(r) + [summary_sentence(c, r, label), ""]
+        imp = (res.get("importance") or {}).get(c) if label == "test years" else None
+        if imp:
+            gs = ", ".join(f"{k} {_pct(v)}" for k, v in sorted(imp["groups"].items(), key=lambda kv: -kv[1]))
+            tops = ", ".join(f"{k} {_pct(v)}" for k, v in imp["top_features"][:3])
+            L += [f"Feature reliance (full model, share of mean |SHAP| on {imp['n_rows']:,} test rows): past-report features "
+                  f"**{_pct(imp['past_reports_share'])}**; by group: {gs}. Top features: {tops}. Mean |SHAP| averages over every "
+                  "segment, most of which have no report history, so it understates how much the top of the ranking leans on past "
+                  "reports; the paired model-minus-physical-only difference above is the direct measure. Weather is a ward-year "
+                  "summary with few distinct years in training, so its share partly reflects year-to-year differences in reporting.", ""]
     if "Brighton" not in res["cities"]:
         L += ["Brighton 2023 to 2025: waiting for lane A's Brighton labels. The same code runs once they land.", ""]
     L.append(SECTION_END)
@@ -360,25 +448,30 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True,
         seg["city"] = "Southampton"
     radius = cfg_a.get("labels", {}).get("snap_m", 25)
     labels = inp["labels"] if inp.get("labels") is not None else labels_from_reports(inp["reports"], seg, cfg_a, radius)
-    table = build_table(seg, labels)
+    table = build_table(seg, labels, wx=inp.get("wx"))
     usable = table[table["rep_prev1"].notna()]
     res = {"cities": {}, "loco": {}, "frozen_2026": None}
     train = usable[usable["split"] == "train"]
     model = fit(train, cfg)
+    phys = fit(train, cfg, PHYSICAL)
+    res["importance"] = {}
     for city in sorted(usable["city"].unique()):
         te = usable[(usable["city"] == city) & (usable["split"] == "test")]
         if len(te):
-            res["cities"][city] = evaluate(model, te.reset_index(drop=True))
+            res["cities"][city] = evaluate({"model": model, "physical_only": phys}, te.reset_index(drop=True))
+            res["importance"][city] = feature_reliance(model, te)
     if usable["city"].nunique() >= 2:
         for city in sorted(usable["city"].unique()):
             tr = usable[(usable["city"] != city) & usable["split"].isin(["train", "test"])]
             te = usable[(usable["city"] == city) & usable["split"].isin(["train", "test"])]
             if tr["had_report"].sum() and te["n_reports"].sum():
-                res["loco"][city] = evaluate(fit(tr, cfg), te.reset_index(drop=True))
+                res["loco"][city] = evaluate({"model": fit(tr, cfg), "physical_only": fit(tr, cfg, PHYSICAL)}, te.reset_index(drop=True))
     fz = usable[usable["split"] == "frozen_2026"]
     if len(fz) and fz["n_reports"].sum():
-        full = fit(usable[usable["split"].isin(["train", "test"])], cfg)
-        res["frozen_2026"] = {c: evaluate(full, g.reset_index(drop=True)) for c, g in fz.groupby("city")}
+        tr_all = usable[usable["split"].isin(["train", "test"])]
+        full, phys_all = fit(tr_all, cfg), fit(tr_all, cfg, PHYSICAL)
+        res["frozen_2026"] = {c: evaluate({"model": full, "physical_only": phys_all}, g.reset_index(drop=True))
+                              for c, g in fz.groupby("city")}
     out_root = Path(report_root) if report_root else root
     md = resolve(cfg, "models_dir", out_root)
     md.mkdir(parents=True, exist_ok=True)
@@ -391,6 +484,8 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True,
     if verbose:
         for c, r in res["cities"].items():
             print(summary_sentence(c, r, "test years"))
+            if res["importance"].get(c):
+                print("past-report share of |SHAP|:", round(res["importance"][c]["past_reports_share"], 3), res["importance"][c]["groups"])
         for c, r in (res.get("frozen_2026") or {}).items():
             print(summary_sentence(c, r, "frozen 2026"))
     return res
