@@ -229,6 +229,10 @@ REASON_TEXT = {
 }
 
 
+ZERO_IS_NOT_A_REASON = set(WEATHER_FEATS) | {"potholes_seg_12m", "potholes_nb_12m", "potholes_seg_8w", "potholes_nb_8w",
+                                             "bus_stop", "junction", "in_flood_area"}
+
+
 def shap_reasons(model: RiskModel, rows: pd.DataFrame, k: int = 3) -> list[list[str]]:
     import shap
     X = rows[model.features]
@@ -238,7 +242,14 @@ def shap_reasons(model: RiskModel, rows: pd.DataFrame, k: int = 3) -> list[list[
     recs = X.to_dict("records")
     for i in range(len(X)):
         order = np.argsort(-sv[i])
-        reasons = [REASON_TEXT[model.features[j]](recs[i]) for j in order[:k] if sv[i, j] > 0]
+        reasons = []
+        for j in order:
+            f = model.features[j]
+            if sv[i, j] <= 0 or len(reasons) == k:
+                break
+            if f in ZERO_IS_NOT_A_REASON and not recs[i][f]:
+                continue                       # "0 hours below 0°C" is not a reason a segment is risky
+            reasons.append(REASON_TEXT[f](recs[i]))
         out.append(reasons)
     return out
 
@@ -252,32 +263,56 @@ def climatology(wx: pd.DataFrame, years: int = 10) -> pd.DataFrame:
 
 
 def forward_rows(data: dict, cfg: dict, root: Path) -> tuple[pd.DataFrame, list[str]]:
-    """Rows for this week (observed weather) and the next weeks (forecast or climatology)."""
+    """Rows for the next forward_weeks weeks after as_of (horizon_week 1..N, schemas.md section 7).
+
+    History features are as at as_of. Weather per week: the weekly weather file's own row for that
+    week when it has one (observed, or Open-Meteo forecast when its uses_forecast is true), else
+    weather_forecast_weekly.parquet, else 10-year climatology. Returns (rows, basis per horizon).
+    """
     as_of = pd.Timestamp(cfg["as_of"])
-    seg, wx = data["seg"], data["wx"]
+    seg, wx = data["seg"], data["wx"].copy()
+    wx["week_start"] = pd.to_datetime(wx["week_start"])
     base = build_table(seg, wx, data["res"], data["potholes"], cfg, start=str(as_of.date()),
                        end=str((as_of + pd.Timedelta(days=1)).date()), with_labels=False)
     fc_path = resolve(cfg, "processed_dir", root) / "weather_forecast_weekly.parquet"
     fc = pd.read_parquet(fc_path) if fc_path.exists() else None
+    if fc is not None:
+        fc["week_start"] = pd.to_datetime(fc["week_start"])
     clim = climatology(wx)
-    frames, wsrc = [], []
-    for k in range(cfg["risk"]["forward_weeks"]):
+    src_name = str(wx["source"].dropna().iloc[0]) if "source" in wx and wx["source"].notna().any() else (
+        "mock" if data.get("sources", {}).get("weather") == "mock" else "unknown")
+    meta_cols = [c for c in ["uses_forecast", "retrieved_at", "data_date"] if c in wx]
+    frames, basis = [], []
+    for k in range(1, cfg["risk"]["forward_weeks"] + 1):
         ws = as_of + pd.Timedelta(weeks=k)
-        r = base.copy()
+        r = base.drop(columns=WEATHER_FEATS).copy()
         r["week_start"] = ws
-        src = "observed" if k == 0 and base[WEATHER_FEATS].notna().all().all() else None
-        if src is None and fc is not None and (pd.to_datetime(fc["week_start"]) == ws).any():
-            f = fc[pd.to_datetime(fc["week_start"]) == ws][["ward"] + WEATHER_FEATS]
-            r = r.drop(columns=WEATHER_FEATS).merge(f, on="ward", how="left")
-            src = "forecast"
-        elif src is None:
-            c = clim[clim["woy"] == int(ws.isocalendar()[1])][["ward"] + WEATHER_FEATS]
-            r = r.drop(columns=WEATHER_FEATS).merge(c, on="ward", how="left")
-            src = "climatology_10y"
+        rows = wx[wx["week_start"] == ws]
+        if len(rows) and rows[WEATHER_FEATS].notna().all().all():
+            f = rows[["ward"] + WEATHER_FEATS + meta_cols]
+            b = "forecast" if "uses_forecast" in rows and rows["uses_forecast"].astype(bool).any() else "observed"
+        elif fc is not None and (fc["week_start"] == ws).any():
+            f = fc[fc["week_start"] == ws][["ward"] + WEATHER_FEATS + [c for c in ["retrieved_at", "data_date"] if c in fc]]
+            f = f.assign(uses_forecast=True)
+            b = "forecast"
+        else:
+            f = clim[clim["woy"] == int(ws.isocalendar()[1])][["ward"] + WEATHER_FEATS]
+            b = "climatology_10y"
+        r = r.merge(f, on="ward", how="left")
         r["horizon_week"] = k
-        frames.append(r)
-        wsrc.append(src)
-    return pd.concat(frames, ignore_index=True), wsrc
+        r["weather_basis"] = b
+        r["uses_forecast"] = r["uses_forecast"].fillna(False).astype(bool) if "uses_forecast" in r else False
+        r["forecast_retrieved_at"] = np.where(r["uses_forecast"], r["retrieved_at"], None) if "retrieved_at" in r else None
+        r["weather_source"] = src_name
+        frames.append(r.drop(columns=[c for c in ["retrieved_at", "data_date"] if c in r]))
+        basis.append(b)
+    out = pd.concat(frames, ignore_index=True)
+    wdd = wx["data_date"].dropna().max() if "data_date" in wx and wx["data_date"].notna().any() else None
+    if wdd is None:
+        obs = wx[~wx["uses_forecast"].astype(bool)] if "uses_forecast" in wx else wx
+        wdd = (obs["week_start"].max() - pd.Timedelta(hours=1)).strftime("%Y-%m-%dT%H:00")
+    out["weather_data_date"] = str(wdd)
+    return out, basis
 
 
 # --- report ---------------------------------------------------------------------------------
@@ -390,7 +425,9 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
     md = resolve(cfg, "models_dir", root)
     md.mkdir(parents=True, exist_ok=True)
     for k, m in models.items():
-        m.booster.booster_.save_model(str(md / f"risk_{k}.txt"))
+        mp = md / f"risk_{k}.txt"
+        m.booster.booster_.save_model(str(mp))
+        mp.write_bytes(mp.read_bytes().replace(b"\r\n", b"\n"))      # LF on every OS (see .gitattributes)
         with open(md / f"risk_{k}_calibrator.pkl", "wb") as f:
             pickle.dump(m.iso, f)
     real = real_world_check(models, data, cfg, root)
@@ -405,22 +442,19 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
     fwd, wsrc = forward_rows(data, cfg, root)
     for k, m in models.items():
         fwd[f"p{k[1:]}"] = m.predict(fwd)
-    now = fwd[fwd["horizon_week"] == 0].reset_index(drop=True)
-    reasons = shap_reasons(models["y30"], now)
-    rmap = {sid: r for sid, r in zip(now["segment_id"], reasons)}
-    # contract (docs/contract_outputs.md section 7): one row per scored segment per forecast week
-    out = fwd[["segment_id", "ward", "week_start", "horizon_week", "p7", "p30"]].copy()
+    first = fwd[fwd["horizon_week"] == 1].reset_index(drop=True)
+    reasons = shap_reasons(models["y30"], first)
+    rmap = {sid: r for sid, r in zip(first["segment_id"], reasons)}
+    # schemas.md section 7: one row per scored segment per forecast week (horizon_week 1..4)
+    out = fwd[["segment_id", "ward", "week_start", "horizon_week", "p7", "p30", "weather_source", "weather_basis",
+               "uses_forecast", "forecast_retrieved_at", "weather_data_date"]].copy()
+    out = out.sort_values(["segment_id", "horizon_week"]).reset_index(drop=True)
     out["week_start"] = pd.to_datetime(out["week_start"]).dt.date
-    w0 = out[out["horizon_week"] == 0].set_index("segment_id")["p30"]
-    last = out[out["horizon_week"] == out["horizon_week"].max()].set_index("segment_id")["p30"]
-    out["p30_trend"] = out["segment_id"].map(last - w0)
+    prev_p30 = out.groupby("segment_id")["p30"].shift(1)
+    out["p30_trend"] = (out["p30"] - prev_p30).fillna(0.0)          # change against the previous week's row
     out["wear"] = out["segment_id"].map(surv.set_index("segment_id")["wear_pct"]).round(1)
     for i in range(3):
         out[f"reason_{i + 1}"] = [rmap[s][i] if len(rmap[s]) > i else None for s in out["segment_id"]]
-    out["weather_source"] = [wsrc[k] for k in out["horizon_week"]]
-    out["uses_forecast"] = out["weather_source"] == "forecast"
-    wx_last = pd.to_datetime(data["wx"]["week_start"]).max() - pd.Timedelta(hours=1)
-    out["weather_data_date"] = wx_last.strftime("%Y-%m-%dT%H:00")
     out["model_version"] = f"risk@{t_start.strftime('%Y-%m-%dT%H:%M')}"
     out["trained_on"] = "synthetic"
     out["uses_synthetic"] = True
@@ -445,7 +479,7 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
                 print(f"{split:<8}{t:<4} model PR-AUC {r['model']['pr_auc']:.3f} top5 {r['model']['precision_top5']:.3f} | "
                       + " | ".join(f"{n} {r[n]['pr_auc']:.3f}/{r[n]['precision_top5']:.3f}" for n in BASELINES))
         print(f"real check: {json.dumps(real.get('results', real), default=str)}")
-        print(f"wrote {out_path} ({out['segment_id'].nunique():,} segments x {out['horizon_week'].nunique()} weeks), reports/risk_eval.md")
+        print(f"wrote {out_path} ({out['segment_id'].nunique():,} segments x {out['horizon_week'].nunique()} weeks, weather {wsrc}), reports/risk_eval.md")
     return {"eval": ev, "real": real, "out": out_path}
 
 

@@ -50,8 +50,9 @@ def generate(seg: pd.DataFrame, wx: pd.DataFrame, res: pd.DataFrame, cfg: dict, 
 
     rain = _weather_matrix(wx, "rain_30d", W, ward_codes, wards)
     rain_z = (rain - rain.mean()) / (rain.std() + 1e-9)
-    ft = _weather_matrix(wx, "freeze_thaw_14d", W, ward_codes, wards)
-    rtf = _weather_matrix(wx, "rain_then_frost_7d", W, ward_codes, wards)
+    caps = pc.get("weather_caps", {})
+    ft = np.minimum(_weather_matrix(wx, "freeze_thaw_14d", W, ward_codes, wards), caps.get("freeze_thaw_14d", np.inf))
+    rtf = np.minimum(_weather_matrix(wx, "rain_then_frost_7d", W, ward_codes, wards), caps.get("rain_then_frost_7d", np.inf))
     age = age_years_at(res, seg_ids, W, cfg)
     prev = prevention_active(res, seg_ids, W, cfg)
 

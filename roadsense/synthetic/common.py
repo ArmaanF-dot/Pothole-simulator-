@@ -84,13 +84,20 @@ def load_inputs(cfg: dict, root: Path | None = None) -> dict:
     (written once to data/synthetic/mock_inputs/ and flagged with input_source='mock').
     """
     proc = resolve(cfg, "processed_dir", root)
+    base = Path(root or ROOT)
+
+    def rel(path: Path) -> str:
+        try:
+            return path.relative_to(base).as_posix()
+        except ValueError:
+            return path.as_posix()
     seg_path = proc / "segments.parquet"
     wx_path = next((p for p in [proc / "weather_weekly.parquet", proc / "weather_weekly.csv"] if p.exists()), None)
     load_path = next((p for p in [proc / "load.parquet", proc / "esal_day.parquet", proc / "load.csv"] if p.exists()), None)
     sources = {}
     if seg_path.exists():
         seg = _normalise_segments(_read_any(seg_path))
-        sources["segments"] = str(seg_path)
+        sources["segments"] = rel(seg_path)
     else:
         from roadsense.synthetic.mock import mock_segments
         seg = mock_segments(cfg)
@@ -100,7 +107,7 @@ def load_inputs(cfg: dict, root: Path | None = None) -> dict:
             ld = _read_any(load_path)[["segment_id", "esal_day"]]
             ld["segment_id"] = ld["segment_id"].astype(str)
             seg = seg.merge(ld, on="segment_id", how="left")
-            sources["esal_day"] = str(load_path)
+            sources["esal_day"] = rel(load_path)
         else:
             from roadsense.synthetic.mock import mock_esal
             seg["esal_day"] = mock_esal(seg, cfg)
@@ -111,7 +118,7 @@ def load_inputs(cfg: dict, root: Path | None = None) -> dict:
     if wx_path is not None:
         wx = _read_any(wx_path)
         wx["week_start"] = pd.to_datetime(wx["week_start"])
-        sources["weather"] = str(wx_path)
+        sources["weather"] = rel(wx_path)
     else:
         from roadsense.synthetic.mock import mock_weekly_weather
         wx = mock_weekly_weather(cfg, sorted(seg["ward"].unique()))

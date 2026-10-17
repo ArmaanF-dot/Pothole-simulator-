@@ -1,6 +1,6 @@
 # Real-label risk model (FixMyStreet, real data)
 
-_Generated 2026-10-17T13:22:46+00:00 by `python -m roadsense.models.real_risk` (real-risk-v0.1)._
+_Generated 2026-10-17T13:50:16+00:00 by `python -m roadsense.models.real_risk` (real-risk-v0.1)._
 
 Labels: real FixMyStreet road-surface reports (`data\processed\fms_snapped.csv`), snapped to main-road segments within 25 m. Counts measure reporting, not pothole rates; scores rank segments within one city and year.
 
