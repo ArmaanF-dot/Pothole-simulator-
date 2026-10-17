@@ -158,6 +158,7 @@ Conventions as above: string `segment_id`, EPSG:4326, ISO dates, `week_start` = 
 | weather_source | str | `open-meteo` or `mock` |
 | weather_data_date | str | latest weather hour used (for the STALE banner) |
 | uses_forecast | bool | the row depends on forecast weather (`weather_forecast_weekly.parquet`) |
+| forecast_retrieved_at | str | when the forecast used was retrieved. **The STALE banner uses this** (older than 24 h → STALE, plan provisional), not `weather_data_date` |
 
 ## 8. Street lights: `outputs/lights_<YYYY-MM-DD>.parquet` + `outputs/lights_latest.parquet` (lane B → C)
 | Column | Type | Notes |
@@ -177,19 +178,27 @@ Conventions as above: string `segment_id`, EPSG:4326, ISO dates, `week_start` = 
 ## 9. Prevention plan rows: `outputs/prevention_plan_<YYYY-MM-DD>.csv` (lane C writes, from 7)
 `rank, segment_id, ward, name, ref, band (critical/high/prevention/monitor), urgency (0–100), p30, wear,
 treatment (crack_sealing/surface_dressing/patch/resurface/permanent_repair), reason_1..3,
-cost_planned_gbp, cost_reactive_avoided_gbp, open_fms_report (bool), uses_synthetic, data_dates (json: source → date)`
-
-**Open points (awaiting lane C):** band thresholds and the urgency formula; treatment rules; cost figures and their source;
-whether a `prevention_plan_latest.csv` copy is needed like 7–8.
+cost_planned_gbp, cost_reactive_avoided_gbp, open_fms_report (bool), uses_synthetic, data_dates (json: source → date),
+p30_peak, p30_rise, treatment_label, avoided_per_gbp, load_confidence, provisional`
+- `p30_peak`: highest p30 over the 4 forecast weeks; `p30_rise`: rise in p30 across them (the plan needs "p30 forecast to rise").
+- `treatment_label`: plain-English name of `treatment` for the UI. Treatment codes as listed above (agreed).
+- `avoided_per_gbp`: expected reactive cost avoided per £ of treatment. **This is the ranking key** (`rank` sorts by it).
+- `load_confidence`: high / medium / low (see section 10). `provisional`: true when the forecast is STALE.
+- One dated file per run plus a `prevention_plan_latest.csv` copy (no symlinks: unreliable on Windows).
 
 ## 10. API JSON (lane C serves; field names = the columns above)
-- `GET /segments?ward=&band=` → GeoJSON FeatureCollection; properties = segments.parquet fields (no geometry column)
-  + latest risk row + `urgency`, `band`, `load_confidence` (high/medium/low from `load_source`).
-- `GET /segments/{id}` → one Feature plus `risk_weeks: [...]` (the 4 rows), `load: {...}`, `reports: [...]`.
+- `GET /segments?ward=&band=` → GeoJSON FeatureCollection with **light properties** for the map (segment_id, name, ward,
+  band, urgency, p30, load_confidence, uses_synthetic). `?detail=full` returns every field: segments.parquet fields
+  (no geometry column) + latest risk row + `urgency`, `band`, `load_confidence`.
+- `load_confidence` mapping (agreed): `count` → high, `same_road` → medium, `class_median` → low ("modelled estimate").
+- `GET /segments/{id}` → one Feature plus `risk_weeks: [...]` (the 4 rows), `load: {...}`, `reports: [...]`,
+  `outcomes: [...]`, `data_dates: {source: date}`.
 - `GET /plan/prevention?ward=` → `{as_of, provisional (bool, true if forecast > 24 h old), rows: [section 9]}`
-- `GET /lights?due_days=90` → section 8 rows.
+- `GET /lights?due_days=` (default 90) → section 8 rows.
 - `POST /reports` / `POST /outcomes` → as in the spec (M8).
-- `GET /sources` → `[{name, used_for, licence, retrieved_at, data_date, is_synthetic}]` for the footer.
+- `GET /sources` → `[{name, label, used_for, licence, retrieved_at, data_date, is_synthetic}]`; `label` is the footer text.
 
-**Open points (awaiting lane C):** the `load_confidence` mapping (count → high, same_road → medium, class_median → low?);
-the "forecast > 24 h old" rule against `retrieved_at`; the `POST` payloads; whether `/segments` takes a city filter.
+**Agreed with lane C (17 Oct, 14:18):** wear for Southampton only, badged SYNTHETIC, null elsewhere; 4 weekly rows
+(the plan needs the rise and the what-if changes weeks 1–3); dated files plus `*_latest` copies; STALE rule = forecast
+older than 24 h by `forecast_retrieved_at`. Still open: `POST` payloads (lane C defines in the API code) and whether
+`/segments` takes a city filter (needed only once Brighton/Portsmouth are scored).
