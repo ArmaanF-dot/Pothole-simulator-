@@ -53,6 +53,23 @@ osm:
   # MapIt area id of each council (for ward boundaries: children of type UTW / MTW)
   council_area: {Southampton: 2567, Portsmouth: 2657, Brighton: 2614}
 
+load:
+  # DfT road traffic statistics (OGL): one AADF CSV per local authority
+  dft_url: https://storage.googleapis.com/dft-statistics/road-traffic/downloads/aadf/local_authority_id/dft_aadf_local_authority_id_{la}.csv
+  dft_la: {Southampton: 137, Portsmouth: 82, Brighton: 136}
+  # AADF is averaged over the city's TRAIN window (labels.windows), so test years stay unseen.
+  count_m: 100                   # segment on the same road within this distance of the point -> load_source = count
+  minor_count_m: 30              # unreferenced roads: nearest Minor count point within this distance -> count
+  # A class with no counted segments borrows from the next class in its list (then the Minor-point median)
+  class_fallback: {motorway_link: [motorway], trunk_link: [trunk], primary_link: [primary],
+                   secondary: [tertiary, primary], secondary_link: [secondary, tertiary],
+                   tertiary_link: [tertiary], unclassified: [residential], living_street: [residential],
+                   road: [residential], service: [residential]}
+  # ASSUMPTION: standard axles (ESAL) per vehicle, 4th-power-law style factors (not a council or DMRB figure)
+  esal_factors: {buses_and_coaches: 1.3, hgvs_2_rigid_axle: 0.4, hgvs_3_rigid_axle: 1.0,
+                 hgvs_4_or_more_rigid_axle: 1.5, hgvs_3_or_4_articulated_axle: 1.0,
+                 hgvs_5_articulated_axle: 2.0, hgvs_6_articulated_axle: 2.2, lgvs: 0.01}
+
 segments:
   max_length_m: 200
   bus_stop_m: 20                 # OSM bus stop within this distance -> bus_stop = true

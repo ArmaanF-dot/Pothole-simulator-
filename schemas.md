@@ -79,12 +79,14 @@ One row per piece of road, all cities stacked. Built from OSM (ODbL) `network_ty
 | Column | Type | Notes |
 |---|---|---|
 | segment_id | str | |
-| hgv_bus_aadf | float | HGV + bus annual average daily flow (DfT, OGL) |
-| esal_day | float | standard axles per day, from the HGV/bus flow (factors in `config.yaml: load.esal_factors`) |
-| count_point_id | int | DfT count point used |
-| count_year | int | |
-| load_source | str | `count` (point on this segment), `same_road` (nearest point on the same road), `class_median` (no point on the road) |
+| hgv_bus_aadf | float | HGV + bus annual average daily flow (DfT, OGL), averaged over the city's **train** years (test years stay unseen) |
+| esal_day | float | standard axles per day: each vehicle class × an ASSUMED wear factor (`config.yaml: load.esal_factors`) |
+| count_point_id | Int64 | DfT count point used (blank for class_median) |
+| count_year | Int64 | latest year in the average (blank for class_median) |
+| load_source | str | `count` (point on this segment), `same_road` (nearest point on the same road), `class_median` (no point on the road: median of that highway class, or of a similar class per `load.class_fallback`) |
 | source | str | `dft` |
+
+Built by `python -m roadsense.features.load`. Lane B's loader merges `esal_day` from this file.
 
 ## 4. Weather: `data/processed/weather_weekly.parquet` (M3)
 One row per ward × week, exactly as lane B asked for. **Every window uses only hours before `week_start`.**

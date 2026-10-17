@@ -9,6 +9,8 @@
 - **Counts measure FixMyStreet use, not pothole rates.** Scores rank segments within each city and year. Raw totals are never compared across cities.
 - **Pavement filter is keyword-based.** A hand check of 25 Brighton reports each way found about 24/25 kept reports were genuine road defects and 22/25 removed ones genuine pavement defects. Some error stays in the labels.
 - **Labels cover all road classes** (decided 17 Oct). Only 27% of Southampton 2015–19 reports are on A/B roads, so main-road-only labels would drop most of them. Reports more than 25 m from any drivable road (about 2%) are dropped as off-road/pavement.
+- **Most segments have no traffic count of their own.** In Southampton 314 segments use a DfT count point on the same road (≤100 m) and 604 the nearest point on that road. The other 7,227 (89%, mostly residential, tertiary and unreferenced B-roads) get a class median (`load_source=class_median`). Main roads with a real count or same-road value: 44%.
+- **ESAL factors are assumptions** (bus 1.3, rigid 2-axle 0.4 … 6-axle artic 2.2 standard axles). They are not from a council or DMRB, and are only used to rank load.
 - **No flood layer yet.** `in_flood_area` is false for every segment until the Environment Agency flood zones are added.
 - **Junction = 4+ streets or a mini-roundabout/signal node.** In OSM's simplified graph almost every edge ends at a 3-way meet, so those are not counted (16% of Southampton segments are junctions).
 - **National Highways roads = motorways only** (10 Southampton segments, M27/M271). OSM doesn't say who owns trunk A-roads.
