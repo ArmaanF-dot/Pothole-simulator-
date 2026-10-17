@@ -150,6 +150,12 @@ def in_window(cfg, r):
     return lo <= int(r["requested"][:4]) <= hi
 
 
+def _redacted(rows):
+    """Copies of rows with the title redacted; the originals (and fms_raw.csv) are untouched."""
+    from roadsense.prevent.redact_titles import redact
+    return [{**r, "title": redact(r.get("title"))} for r in rows]
+
+
 def write_csv(path, rows, fields):
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -175,10 +181,11 @@ def build(cfg, raw):
         r["surface"] = classify(r["title"], r["description"])
         r["in_window"] = in_window(cfg, r)
     clean = [r for r in kept if r["surface"] == "road"]
-    write_csv(os.path.join(out, "fms_roads_clean.csv"), clean, base + ["surface_keyword", "in_window"])
+    # Redact house numbers, postcodes and names from titles before anything public is written (raw stays local).
+    write_csv(os.path.join(out, "fms_roads_clean.csv"), _redacted(clean), base + ["surface_keyword", "in_window"])
 
     lights = [r for r in raw if r["category"] == "Street lighting" and r["lat"]]
-    write_csv(os.path.join(out, "fms_streetlights.csv"), lights, base)
+    write_csv(os.path.join(out, "fms_streetlights.csv"), _redacted(lights), base)
 
     lines = [f"Built {datetime.now().isoformat(timespec='minutes')} from FixMyStreet Open311 (raw rows: {len(raw)})",
              "city         road-surface  pavement-removed  labels  in-window  street-lighting"]
