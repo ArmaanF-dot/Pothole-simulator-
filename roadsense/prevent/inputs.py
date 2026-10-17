@@ -250,6 +250,8 @@ def load_forecast_meta(cfg: dict, root: Path | None = None) -> dict:
         if not p.exists():
             continue
         w = pd.read_parquet(p)
+        if "city" in w:  # lane A's weather files hold all three cities
+            w = w[w["city"] == cfg["coverage"]["city"]]
         if "uses_forecast" in w:
             w = w[w["uses_forecast"].astype(bool)]
         if w.empty:

@@ -18,6 +18,15 @@
   "is_synthetic": false
  },
  {
+  "name": "ONS Open Geography Portal ward boundaries",
+  "label": "Portsmouth ward boundaries: ONS, contains OS data \u00a9 Crown copyright (OGL)",
+  "used_for": "Portsmouth wards (MapIt quota reached), coverage check",
+  "licence": "OGL v3",
+  "retrieved_at": "2026-10-17T15:05+00:00",
+  "data_date": "December 2024 ward boundaries",
+  "is_synthetic": false
+ },
+ {
   "name": "DfT road traffic statistics",
   "label": "Traffic counts: Department for Transport, AADF to 2025 (OGL)",
   "used_for": "HGV and bus load (esal_day)",
