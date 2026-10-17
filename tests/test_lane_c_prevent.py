@@ -223,10 +223,15 @@ def test_worth_treating_fields_order_and_badges(cfg, world):
     loser = base[base["scored"] & (base["avoided_per_gbp"] < 1)].sort_values("urgency").iloc[0]["segment_id"]
     sc = P.score(seg, risk, cfg, confirmed={loser: {"report": "fms-1", "by": "keyword"}})
     r = sc.set_index("segment_id").loc[loser]
-    assert r["confirmed_pothole"] and r["worth_treating"] and r["confirmed_by"] == "keyword" and not r["pays_back"]
+    assert r["confirmed_pothole"] and r["worth_treating"] and r["confirmed_by"] == "keyword"
+    assert r["treatment"] == "permanent_repair" and r["treatment_cost_gbp"] == 56.94
+    assert r["reactive_cost_avoided_gbp"] == 87.80 and r["avoided_per_gbp"] == pytest.approx(1.542, abs=1e-3)
+    assert r["urgency"] >= 70 and r["band"] in ("high", "critical")
+    assert r["reason_1"] == "open FixMyStreet report, confirmed by keyword"
+    assert r["preventive_treatment"] in ("crack_sealing", "surface_dressing", "patch", "resurface")
     assert (sc["pays_back"] == (sc["scored"] & (sc["avoided_per_gbp"] >= 1))).all()
     w = P.build_worth(sc, cfg)
-    assert w.iloc[0]["segment_id"] == loser and w.iloc[0]["value_badge"].startswith("Confirmed: must fix")
+    assert w.iloc[0]["segment_id"] == loser and w.iloc[0]["value_badge"] == "Confirmed: must fix ×1.54"
     rest = w[~w["confirmed_pothole"]]
     assert rest["pays_back"].all() and rest["avoided_per_gbp"].is_monotonic_decreasing
     plan = P.build_plan(sc, cfg)

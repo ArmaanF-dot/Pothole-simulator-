@@ -65,7 +65,8 @@ function renderPlanRows() {
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
       <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div></td>
       <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
-        ${r.confirmed_pothole ? `<div class="small muted">${esc(r.confirmed_report || "crew outcome")} · ${esc(r.confirmed_by)}</div>` : ""}</td></tr>`).join("")
+        ${r.confirmed_pothole ? `<div class="small muted">${esc(r.confirmed_report || "crew outcome")} · ${esc(r.confirmed_by)}</div>` : ""}
+        ${r.confirmed_pothole && r.preventive_treatment ? `<div class="small muted">Also suggested: ${esc(r.preventive_treatment_label)} £${fmt(r.preventive_treatment_cost_gbp, 0)} (×${fmt(r.preventive_avoided_per_gbp, 2)})</div>` : ""}</td></tr>`).join("")
     || `<tr><td colspan="5" class="muted">${worth ? "No road pays back and no confirmed pothole yet." : "No segments in the prevention window are forecast to rise."}</td></tr>`;
   document.querySelectorAll("#plan-rows tr[data-id]").forEach((tr) => tr.onclick = () => showSegment(tr.dataset.id, true));
 }

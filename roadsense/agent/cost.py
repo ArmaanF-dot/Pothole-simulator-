@@ -95,6 +95,14 @@ def write_cost_report(cfg: dict | None = None, root: Path | None = None) -> Path
               f"(from {t['n']} measured full triage run(s); the token count is measured, the price and volumes are assumptions).", ""]
     else:
         L += ["## Result", "", "**Not measured yet:** the formula above fills in once a full triage run is logged.", ""]
+    life = cfg["treatments"]["life_years"]
+    L += ["## Plan value horizon (avoided_per_gbp)", "",
+          "Expected reactive repairs avoided over each treatment's service life, x £" + f"{cfg['costs']['reactive_repair']:.2f}"
+          + ", per £ of treatment. Service lives (assumptions, typical UK ranges): "
+          + ", ".join(f"{k.replace('_', ' ')} {v} years" for k, v in life.items())
+          + ". Hazard is held at today's level, no discounting. A confirmed pothole is costed as one permanent repair: "
+          f"£{cfg['costs']['reactive_repair']:.2f} reactive avoided / £{cfg['costs']['planned_repair']:.2f} planned = "
+          f"×{cfg['costs']['reactive_repair'] / cfg['costs']['planned_repair']:.2f} (ALARM 2025).", ""]
     L += ["## Not measured (config assumptions)", "",
           f"- **Price:** ${pi}/M input and ${po}/M output is the Gemini 2.5 Flash paid-tier list price. The logged model is "
           f"`{cfg['triage']['model']}`; its price has not been checked, so confirm on ai.google.dev/pricing before quoting the £ figure.",
