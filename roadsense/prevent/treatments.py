@@ -44,13 +44,17 @@ def treatment_cost(treatment: pd.Series, length_m: pd.Series, highway: pd.Series
     return cost.round(2)
 
 
-def expected_avoided(p30_mean, treatment: pd.Series, cfg: dict) -> np.ndarray:
-    """Expected reactive repairs avoided over the benefit window.
+def life_years(treatment: pd.Series, cfg: dict) -> np.ndarray:
+    return treatment.map(cfg["treatments"]["life_years"]).fillna(0).astype(float).values
 
-    Monthly hazard h = -ln(1 - p30); potholes expected over N years = h * 12N; treatment multiplies
-    hazard by m, so avoided = h * 12N * (1 - m).
+
+def expected_avoided(p30_mean, treatment: pd.Series, cfg: dict) -> np.ndarray:
+    """Expected reactive repairs avoided over the treatment's service life (config life_years).
+
+    Monthly hazard h = -ln(1 - p30); potholes expected over L years = h * 12L; the treatment multiplies
+    hazard by m, so avoided = h * 12L * (1 - m). Hazard is held at today's level (assumption).
     """
     t = cfg["treatments"]
     h = -np.log1p(-np.clip(np.asarray(p30_mean, float), 0, 0.999))
     m = treatment.map(t["hazard_multiplier"]).fillna(1.0).astype(float).values
-    return h * 12 * t["benefit_years"] * (1 - m)
+    return h * 12 * life_years(treatment, cfg) * (1 - m)

@@ -3,7 +3,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (x, d = 3) => (x === null || x === undefined ? "n/a" : Number(x).toFixed(d));
 const BAND_COLOR = { critical: "#c62828", high: "#ef6c00", prevention: "#f9a825", monitor: "#7cb342" };
-const state = { ward: "", scenario: "", meta: null, map: null, lastFms: null };
+const state = { ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null };
+const vbClass = (t) => (String(t).startsWith("Pays back") ? "pay" : String(t).startsWith("Confirmed") ? "must" : "loss");
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -38,19 +39,34 @@ async function loadPlan() {
     + (p.provisional ? " " + badge("PROVISIONAL", "prov") : "")
     + (p.scenario ? ` What-if <b>${esc(p.scenario)}</b> (${esc(p.scenario_method)}).` : "")
     + (p.trained_on ? ` Model ${esc(p.model_version || "")} trained on <b>${esc(p.trained_on)}</b> labels.` : "")
-    + ` Ranked by reactive repair cost avoided per £ of treatment (planned ${gbp(p.costs.planned_repair)} vs reactive ${gbp(p.costs.reactive_repair)}, ${esc(p.costs.source)}).`;
+    + ` Ranked by reactive repair cost avoided over each treatment's life per £ of treatment (planned ${gbp(p.costs.planned_repair)} vs reactive ${gbp(p.costs.reactive_repair)}, ${esc(p.costs.source)}).`;
   $("#movers").innerHTML = p.movers.length ? `<div class="card"><b>Biggest risk rises under ${esc(p.scenario)}</b> <span class="small muted">urgency at the 4-week forecast peak, before → after</span>
     <table class="rows"><tbody>${p.movers.map((m) => `<tr data-id="${esc(m.segment_id)}"><td>${esc(m.name)} <span class="small muted">${esc(m.highway)}${m.bus_stop ? " · bus stop" : ""} · ${fmt(m.esal_day, 0)} ESAL/day</span></td>
       <td>${fmt(m.urgency_base, 0)} → <span class="u ${m.band_scn}">${fmt(m.urgency_scn, 0)}</span></td><td class="up">+${fmt(m.p30_peak_change)} P30</td></tr>`).join("")}</tbody></table></div>` : "";
   document.querySelectorAll("#movers tr[data-id]").forEach((tr) => tr.onclick = () => showSegment(tr.dataset.id, true));
-  $("#plan-rows").innerHTML = p.rows.map((r) => `<tr data-id="${esc(r.segment_id)}">
+  state.plan = p;
+  renderPlanRows();
+}
+
+function renderPlanRows() {
+  const p = state.plan;
+  if (!p) return;
+  const worth = state.planView === "worth";
+  const rows = worth ? p.worth.rows : p.rows;
+  $("#worth-count").textContent = p.worth.rows.length || "";
+  $("#worth-head").textContent = p.worth.header;
+  $("#worth-head").classList.toggle("hidden", !worth);
+  document.querySelectorAll(".subtabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === state.planView));
+  $("#plan-rows").innerHTML = rows.map((r) => `<tr data-id="${esc(r.segment_id)}">
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         <div class="reasons">${esc(r.reasons)}</div>
         <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
       <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div></td>
-      <td>${fmt(r.avoided_per_gbp, 2)}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No segments in the prevention window are forecast to rise.</td></tr>`;
+      <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
+        ${r.confirmed_pothole ? `<div class="small muted">${esc(r.confirmed_report || "crew outcome")} · ${esc(r.confirmed_by)}</div>` : ""}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">${worth ? "No road pays back and no confirmed pothole yet." : "No segments in the prevention window are forecast to rise."}</td></tr>`;
   document.querySelectorAll("#plan-rows tr[data-id]").forEach((tr) => tr.onclick = () => showSegment(tr.dataset.id, true));
 }
 
@@ -205,6 +221,7 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
 $("#ward").onchange = (e) => { state.ward = e.target.value; refresh(); if (!$("#tab-lights").classList.contains("hidden")) loadLights(); };
 $("#scenario").onchange = async (e) => { state.scenario = e.target.value; $("#plan-head").textContent = "Re-scoring…"; await Promise.all([loadPlan(), state.mapReady ? loadMap() : null]); };
 $("#dark-only").onchange = loadLights;
+document.querySelectorAll(".subtabs button").forEach((b) => b.onclick = () => { state.planView = b.dataset.view; renderPlanRows(); });
 $("#triage-form").onsubmit = (e) => { e.preventDefault(); triage($("#fms-pick").value); };
 $("#dup-btn").onclick = () => triage(state.lastFms || $("#fms-pick").value);
 

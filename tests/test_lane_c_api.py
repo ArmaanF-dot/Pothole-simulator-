@@ -115,6 +115,8 @@ def test_end_to_end_triage_attach_approve_outcome_rescore(root):
     assert r["work_order"]["status"] == "approved"
     assert r["segment"]["urgency"] >= max(70, before["urgency"])
     assert app.post("/workorders/fms-111/approve").status_code == 409
+    worth = app.get("/plan/prevention").json()["worth"]
+    assert any(r["segment_id"] == "X003-004" and r["confirmed_by"] == "gemini" for r in worth["rows"])
     # 5. crew outcome re-scores the segment
     out = app.post("/outcomes", json={"segment_id": "X003-004", "outcome": "pothole"}).json()
     assert out["after"]["urgency"] == 100 and out["after"]["band"] == "critical"
@@ -176,6 +178,9 @@ def test_read_endpoints(root):
     plan = app.get("/plan/prevention", params={"scenario": "rain_then_frost"}).json()
     assert plan["scenario_method"] == "sensitivity_surrogate"
     assert plan["movers"] and plan["movers"][0]["urgency_scn"] >= plan["movers"][0]["urgency_base"]
+    base = app.get("/plan/prevention").json()
+    assert {"pays_back", "confirmed_pothole", "confirmed_by", "worth_treating"} <= set(base["rows"][0])
+    assert base["worth"]["header"].endswith("reactive cost avoided") and "service life" in base["horizon"]
     assert app.get("/plan/prevention", params={"scenario": "nope"}).status_code == 400
     lights = app.get("/lights", params={"due_days": 90}).json()
     assert lights["synthetic"] and all(l["due"] or l["replacement_overdue"] for l in lights["lamps"])
