@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 17 Oct 2026, 15:20_
+_Last updated: 17 Oct 2026, 16:45_
 
 ## Done
 - `pull_fixmystreet.py` pulls FixMyStreet road/pavement reports for Southampton, Portsmouth and Brighton (2008–2026).
@@ -27,6 +27,9 @@ _Last updated: 17 Oct 2026, 15:20_
   - **Brighton and Portsmouth built (same pipeline; Southampton rows checked identical in every file):**
     - Brighton: 8,179 segments (664 km, 23 wards). Labels: train ≤2022 658 positive segment-years, test 2023–25 676, 2026 28. Load: 366 count / 948 same_road / 6,865 class_median. Flood Zone 3: 30 segments.
     - Portsmouth: 6,010 segments (486 km, 14 wards, 131 National Highways on M275/M27). Labels 2008–25 (training/transfer only) 246 positive, 2026 39. Load: 325 / 746 / 4,939. Flood Zone 3: 810 segments (13.5%).
+    - **Weather for all three cities:** `weather_weekly.parquet` 33,642 ward-weeks (54 wards × 623 weeks, Dec 2014 → Nov 2026). `weather_forecast_weekly.parquet` 162 rows = next 3 weeks (19 Oct, 26 Oct, 2 Nov) for every ward. Open-Meteo, CC BY 4.0, non-commercial.
+    - **Context columns on segments.parquet:** `cycle_route`, `near_school_hospital` (joined from `segment_context.parquet`, which stays; 22,334 rows, ids and order unchanged). For the demo filter `city == "Southampton"`.
+    - **Contract test passes:** pytest 10 passed, 5 skipped (lane B synthetic/risk files not on `lane-a-data`). Pushed: Brighton 5da0950, Portsmouth cd10bd4.
     - **Portsmouth wards come from ONS** (Dec 2024, OGL): MapIt's free quota ran out (429). Same official names, `mapit_id` null. `wards.geojson` now has all 54 wards (`python -m roadsense.features.wards <city>`), and ONS is added to `sources.json`.
 
 ## Next (in order)
