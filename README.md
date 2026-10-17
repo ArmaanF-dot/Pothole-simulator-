@@ -69,7 +69,9 @@ What it does, per city (Southampton, Brighton):
    At most one incremental pull per UTC day: a second run the same day reuses that day's reports and only refreshes
    the weather. Requests to FixMyStreet and Open-Meteo send `User-Agent: RoadSense/1.0 (SotonShip26 hackathon; <contact>)`,
    with `<contact>` from `ROADSENSE_CONTACT` in `.env` (the project's GitHub URL if unset).
-2. **Open-Meteo:** refreshes the forecast weeks (16-day forecast; `past_days=92` supplies the 90-day windows).
+2. **Open-Meteo:** refreshes the forecast weeks (16-day forecast; `past_days=92` supplies the 90-day windows), at
+   each ward's point from the committed `data/processed/ward_points_<city>.csv`. The refresh never reads `data/raw/`
+   (not committed), so it runs from a fresh clone.
 3. **Never touches** OpenStreetMap, flood zones, wards or DfT counts (no `--refresh` to the OSM ingest).
 4. **Re-scores with the frozen models** in `data/models` (no retraining), rebuilds the Southampton prevention plan
    and what-if plans, the Brighton inspection list, and triages **new** open reports only (Gemini over the same

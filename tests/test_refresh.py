@@ -74,9 +74,22 @@ def fake_http(now=NOW, fail=False):
 
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
+    import geopandas as gpd
+    from roadsense.ingest import weather as W
     base = tmp_path_factory.mktemp("live")
     http = fake_http()
-    code = run.refresh(now=NOW, get_json=http, client=None, base=base, verbose=False)
+    real_read = gpd.read_file
+
+    def no_raw(path, *a, **k):
+        assert "raw" not in Path(str(path)).parts, f"refresh read {path}: data/raw/ is not committed"
+        return real_read(path, *a, **k)
+
+    def no_gpkg(*a, **k):
+        raise AssertionError("refresh must use data/processed/ward_points_<city>.csv, not the ward gpkg")
+    with pytest.MonkeyPatch.context() as m:               # a fresh clone has no data/raw/
+        m.setattr(gpd, "read_file", no_raw)
+        m.setattr(W, "ward_centroids", no_gpkg)
+        code = run.refresh(now=NOW, get_json=http, client=None, base=base, verbose=False)
     return {"base": base, "code": code, "http": http}
 
 

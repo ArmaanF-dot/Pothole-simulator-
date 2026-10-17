@@ -88,6 +88,11 @@ def check_history(as_of: str, cities: list[str], stage: Path, repo: Path) -> Non
         if first > pd.Timestamp(f"{a.year - 3}-01-01") or last < pd.Timestamp(f"{a.year - 1}-12-01"):
             problems.append(f"Southampton: the real-label model's history input needs complete synthetic repair years "
                             f"{a.year - 3}-{a.year - 1}; data/synthetic/potholes.csv covers {first.date()} to {last.date()}.")
+    from roadsense.features.ward_points import path_for
+    for city in cities:
+        if not Path(path_for(stage / "data" / "processed", city)).exists():
+            problems.append(f"{city}: {path_for('data/processed', city)} is missing (per-ward weather needs it; "
+                            f"build it once with python -m roadsense.features.ward_points {city} and commit it)")
     lab = pd.read_csv(stage / "data" / "processed" / "labels_segment_year.csv", usecols=["city", "year"])
     for city in [c for c in cities if c != "Southampton"]:
         have = set(lab.loc[lab["city"] == city, "year"])
@@ -130,7 +135,7 @@ def step_weather(get_json, cfg_a: dict, stage: Path, cities: list[str], now: dat
     weekly = pd.read_parquet(proc / "weather_weekly.parquet")
     counts = {}
     for city in cities:
-        fresh = fetch.forecast_weeks(get_json, cfg_a, city, now)
+        fresh = fetch.forecast_weeks(get_json, cfg_a, city, now, proc)
         weekly = fetch.merge_weather(weekly, fresh)
         counts[city] = {"wards": int(fresh["ward"].nunique()), "weeks": sorted(fresh["week_start"].unique().tolist())}
     weekly.to_parquet(proc / "weather_weekly.parquet", index=False)

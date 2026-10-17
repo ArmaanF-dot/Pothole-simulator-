@@ -170,12 +170,14 @@ def refresh_reports(get_json, cfg_a: dict, stored: pd.DataFrame, cities: list[st
 PAST_DAYS = 92                            # forecast API maximum; covers the 90-day windows of the forecast weeks
 
 
-def forecast_weeks(get_json, cfg_a: dict, city: str, now: datetime) -> pd.DataFrame:
+def forecast_weeks(get_json, cfg_a: dict, city: str, now: datetime, processed_dir) -> pd.DataFrame:
     """Weekly features for the weeks starting after today, one ward at a time, from the Open-Meteo
-    forecast endpoint (past_days back-fills the history the 90-day windows need)."""
+    forecast endpoint (past_days back-fills the history the 90-day windows need). Ward points come from
+    the committed data/processed/ward_points_<city>.csv (never data/raw/, which is not committed)."""
+    from roadsense.features.ward_points import read as ward_points
     frames = []
     retrieved = now.isoformat(timespec="minutes")
-    for _, r in W.ward_centroids(cfg_a, city).iterrows():
+    for _, r in ward_points(processed_dir, city).iterrows():
         q = {"latitude": r.lat, "longitude": r.lon, "hourly": ",".join(W.HOURLY), "timezone": "GMT",
              "forecast_days": 16, "past_days": PAST_DAYS}
         h = W.to_frame(get_json(W.FORECAST + "?" + urllib.parse.urlencode(q)), r.ward, city, True)
