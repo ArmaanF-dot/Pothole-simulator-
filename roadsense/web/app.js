@@ -269,19 +269,29 @@ async function loadInspection(c) {
     <span class="small">${p.count} segments: ${p.open_report_rows} with an open FixMyStreet report in the last ${p.window_days} days (first),
     then the top ${p.top_n} by risk rank in ${esc(c)}.</span>`;
   const BAND = { top1: "critical", top5: "high", top10: "prevention" };
-  $("#inspect-rows").innerHTML = p.rows.map((r) => `<tr data-id="${esc(r.segment_id)}">
+  const row = (r) => `<tr data-id="${esc(r.segment_id)}">
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         ${r.open_report ? ` <span class="vb must">open report</span><div class="reasons">${r.open_reports.map((o) => `${esc(o.reported_at)}: ${esc(o.title)}`).join(" · ")}</div>` : ""}
         <div class="reasons">${esc(r.reasons.join(" · "))}</div></td>
       <td><span class="u ${BAND[r.risk_band] || "monitor"}">${esc(r.risk_label)}</span></td>
-      <td>${esc(r.action)}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">No segments.</td></tr>`;
+      <td>${esc(r.action)}</td></tr>`;
+  $("#inspect-rows").innerHTML = p.sections.filter((s) => s.count).map((s) =>
+    `<tr class="section"><th colspan="4">${esc(s.label)} <span class="muted small">${s.count} · ${esc(s.note)}</span></th></tr>`
+    + p.rows.filter((r) => r.section === s.key).map(row).join("")).join("") || `<tr><td colspan="4" class="muted">No segments.</td></tr>`;
   document.querySelectorAll("#inspect-rows tr[data-id]").forEach((tr) => tr.onclick = () => showCitySegment(tr.dataset.id));
 }
+
+// page title per city; the home city keeps the original text
+const CITY_TITLE = { Brighton: ["Brighton & Hove highways · inspection list", "RoadSense · Brighton & Hove"] };
+const HOME_TITLE = [document.querySelector("#brand-sub").textContent, document.title];
 
 async function setCity(c) {
   state.city = c;
   const other = otherCity();
+  const [sub, title] = other ? (CITY_TITLE[c] || [`${c} highways · inspection list`, `RoadSense · ${c}`]) : HOME_TITLE;
+  $("#brand-sub").textContent = sub;
+  document.title = title;
   document.body.classList.toggle("other-city", other);
   ["#ward-wrap", "#scenario-wrap", "#triage-form", "#queue", "#triage-note"].forEach((s) => $(s).classList.toggle("hidden", other));
   $("#city-triage").classList.toggle("hidden", !other);
@@ -294,7 +304,7 @@ async function setCity(c) {
   $("#detail").classList.add("hidden");
   if (other) {
     const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
-    note.innerHTML = `<b>${esc(c)}: risk map only</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
+    note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
       <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
       The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
       Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;

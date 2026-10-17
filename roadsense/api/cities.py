@@ -90,7 +90,7 @@ class CityView:
                 "risk_band": r["risk_band"], "risk_label": RANK_LABEL[r["risk_band"]],
                 "reasons": [x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str)],
                 "badge": self.badge(), **self.meta,
-                "note": f"Map only: the prevention plan, streetlights and triage cover Southampton only."}
+                "note": "Inspection list and read-only triage from real reports. Streetlights are Southampton only."}
 
     INSPECT_HEADER = ("{city} inspection list: ranked by risk from real FixMyStreet reports. "
                       "No wear model for {city}, so treatments are chosen on inspection.")
@@ -117,12 +117,17 @@ class CityView:
         rows = []
         for k, r in enumerate(pd.concat([opened, rest]).to_dict("records"), start=1):
             reps = sorted(reports.get(r["segment_id"], []), key=lambda x: x["reported_at"], reverse=True)
-            rows.append({"rank": k, "segment_id": r["segment_id"], "name": r["name"], "ward": r.get("ward"),
+            rows.append({"rank": k, "section": "open" if reps else "risk",
+                         "segment_id": r["segment_id"], "name": r["name"], "ward": r.get("ward"),
                          "highway": r["highway"], "risk_band": r["risk_band"], "risk_label": RANK_LABEL[r["risk_band"]],
                          "reasons": [x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str)],
                          "action": "Inspect", "open_report": bool(reps), "open_reports": reps,
                          "history_source": self.meta["history_source"], "uses_synthetic": bool(self.meta["uses_synthetic"])})
+        sections = [{"key": "open", "label": "Open reports (inspect first)", "count": len(opened),
+                     "note": "ranked by predicted risk within the section"},
+                    {"key": "risk", "label": "Highest predicted risk", "count": len(rest), "note": f"top {top_n} by risk rank"}]
         return {"city": self.city, "header": self.INSPECT_HEADER.format(city=self.city), "badge": self.badge(),
+                "sections": sections,
                 "count": len(rows), "open_report_rows": len(opened), "top_n": top_n,
                 "window_days": cfg["triage"]["open_report_days"], **self.meta, "rows": rows}
 
