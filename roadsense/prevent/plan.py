@@ -69,6 +69,11 @@ def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | Non
     df.loc[~df["scored"], ["urgency", "band"]] = [np.nan, None]
     df["p30_peak"] = df[P30_WEEKS].max(axis=1)
     df["p30_rise"] = df[P30_WEEKS[1:]].max(axis=1) - df["p30_w0"]
+    # urgency at the forecast peak over the next 4 weeks: what a what-if scenario moves
+    df["urgency_peak"] = U.urgency(df["p30_peak"], df["wear_pct"], df["consequence"], cfg, df["confirmed_open"])
+    df["urgency_peak"] = np.maximum(df["urgency_peak"], floor)
+    df["band_peak"] = U.band(df["urgency_peak"], cfg)
+    df.loc[~df["scored"], ["urgency_peak", "band_peak"]] = [np.nan, None]
     df["treatment"] = T.choose(df["wear_pct"], df["cracking"], df["confirmed_open"], cfg)
     df.loc[~df["scored"], "treatment"] = None
     df["treatment_label"] = df["treatment"].map(cfg["treatments"]["label"])

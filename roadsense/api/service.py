@@ -101,6 +101,16 @@ class Service:
             self._scenario_scored[scenario] = P.score(self.seg, self._scenarios[scenario], self.cfg, self.feedback)
         return self._scenario_scored[scenario]
 
+    def warm(self) -> dict:
+        """Pre-compute every what-if scenario and the map layer so the live demo never waits."""
+        import time
+        t = time.time()
+        for sc in self.cfg["whatif"]["scenarios"]:
+            self.scored_for(sc)
+        self.segments(geojson=True)
+        return {"warmed_scenarios": list(self._scenarios), "seconds": round(time.time() - t, 1),
+                "methods": {k: v["scenario_method"].iloc[0] for k, v in self._scenarios.items()}}
+
     def freshness(self, forecast_as_of: str | None = None) -> dict:
         return P.freshness(self.cfg, self.forecast_meta, forecast_as_of or self.forecast_as_of, now=self.now)
 
@@ -115,7 +125,7 @@ class Service:
 
     # --- reads ---------------------------------------------------------------------------------
     SEG_COLS = ["segment_id", "name", "ward", "highway", "owner", "length_m", "lat", "lon", "urgency", "band", "wear_pct",
-                "p7", "p30", "p30_w0", "p30_w1", "p30_w2", "p30_w3", "p30_peak", "p30_rise", "consequence",
+                "p7", "p30", "p30_w0", "p30_w1", "p30_w2", "p30_w3", "p30_peak", "p30_rise", "urgency_peak", "band_peak", "consequence",
                 "consequence_text", "treatment", "treatment_label", "treatment_cost_gbp", "reactive_cost_avoided_gbp",
                 "avoided_per_gbp", "reason_1", "reason_2", "reason_3", "esal_day", "traffic_note", "bus_stop",
                 "in_flood_area", "status", "confirmed_open", "cracking", "weather_source", "model_version", "as_of",
@@ -132,11 +142,11 @@ class Service:
         meta = {"count": len(s), "as_of": self.risk_meta.get("as_of"), "scenario": scenario, **self.badges()}
         if not geojson:
             return {**meta, "segments": records(s, self.SEG_COLS)}
-        feats = []
-        for r, g in zip(records(s, ["segment_id", "name", "ward", "highway", "urgency", "band", "status", "confirmed_open"]),
-                        s["geometry"]):
-            feats.append({"type": "Feature", "properties": r,
-                          "geometry": {"type": "LineString", "coordinates": [list(c) for c in I._coords(g)]}})
+        if not hasattr(self, "_geom"):
+            self._geom = {sid: [[round(x, 6), round(y, 6)] for x, y in I._coords(g)]
+                          for sid, g in zip(self.seg["segment_id"], self.seg["geometry"])}
+        feats = [{"type": "Feature", "properties": r, "geometry": {"type": "LineString", "coordinates": self._geom[r["segment_id"]]}}
+                 for r in records(s, ["segment_id", "name", "ward", "highway", "urgency", "band", "status", "confirmed_open"])]
         return {"type": "FeatureCollection", "features": feats, "meta": meta}
 
     def segment(self, sid: str, scenario=None) -> dict | None:
@@ -168,7 +178,14 @@ class Service:
         p = P.build_plan(s, self.cfg, ward=ward)
         f = self.freshness(forecast_as_of)
         method = (self._scenarios[scenario]["scenario_method"].iloc[0] if scenario else None)
-        return {"as_of": self.risk_meta.get("as_of"), "ward": ward, "scenario": scenario, "scenario_method": method,
+        movers = []
+        if scenario:
+            cmp_ = W.compare(self.scored, s)
+            if ward:
+                cmp_ = cmp_[cmp_["ward"] == ward]
+            movers = records(cmp_.head(10).reset_index(), ["segment_id", "name", "ward", "highway", "esal_day", "bus_stop",
+                                                          "urgency_base", "urgency_scn", "band_scn", "p30_peak_change"])
+        return {"movers": movers, "as_of": self.risk_meta.get("as_of"), "ward": ward, "scenario": scenario, "scenario_method": method,
                 "freshness": f, "provisional": f["provisional"], "count": len(p), "costs": self.cfg["costs"],
                 **self.badges(), "rows": records(p, P.PLAN_COLS)}
 

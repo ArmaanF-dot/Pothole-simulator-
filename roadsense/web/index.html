@@ -31,16 +31,18 @@
     </nav>
     <div id="tab-plan" class="tab">
       <p id="plan-head" class="muted"></p>
+      <div id="movers"></div>
       <table class="rows"><thead><tr><th>#</th><th>Segment</th><th>Urgency</th><th>Treatment</th><th>£ avoided per £</th></tr></thead>
         <tbody id="plan-rows"></tbody></table>
     </div>
     <div id="tab-triage" class="tab hidden">
       <form id="triage-form">
         <label>Real FixMyStreet report <select id="fms-pick"></select></label>
+        <label class="small">Photo (optional) <input type="file" id="photo" accept="image/*"></label>
         <button type="submit">Triage report</button>
         <button type="button" id="dup-btn" title="Submit the same real report again as a second resident would">Re-submit (duplicate)</button>
       </form>
-      <p class="muted small">Only public FixMyStreet text is sent to Gemini. Dangerous road conditions:
+      <p class="muted small">Only public FixMyStreet text and photos of public roads are sent to Gemini. Dangerous road conditions:
         <a id="official-link" target="_blank" rel="noopener">report to Southampton City Council</a>.</p>
       <div id="queue"></div>
     </div>

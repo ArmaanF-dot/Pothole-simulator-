@@ -242,8 +242,13 @@ def triage(rep: dict, ctx: Context, client=None, method: str = "auto", image: tu
     dups = ctx.find_duplicates(rep["lat"], rep["lon"], rep["reported_at"], exclude=str(rep["report_id"]))
     used, usage, trace, llm = "keyword_baseline", None, [], None
     if method in ("auto", "gemini") and client is not None:
-        llm, usage, trace = gemini_triage(rep, ctx, client, image=image, root=root)
-        used = "gemini" if llm else "keyword_baseline (gemini returned no decision)"
+        try:
+            llm, usage, trace = gemini_triage(rep, ctx, client, image=image, root=root)
+            used = "gemini" if llm else "keyword_baseline (gemini returned no decision)"
+        except Exception as e:  # quota, network or API errors must not stop the officer's queue
+            if method == "gemini":
+                raise RuntimeError(f"Gemini call failed: {type(e).__name__}") from e
+            used = f"keyword_baseline (gemini unavailable: {type(e).__name__})"
     elif method == "gemini":
         raise RuntimeError("no Gemini client: set GEMINI_API_KEY in .env")
     category = (llm or {}).get("category") if llm else keyword_classify(f"{rep.get('title', '')} {rep.get('detail', '')}")

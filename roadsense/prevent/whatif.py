@@ -105,7 +105,7 @@ def compare(scored_base: pd.DataFrame, scored_scn: pd.DataFrame) -> pd.DataFrame
     s = scored_scn.set_index("segment_id")
     df = pd.DataFrame({"name": b["name"], "ward": b["ward"], "highway": b["highway"], "esal_day": b["esal_day"],
                        "bus_stop": b["bus_stop"], "p30_peak_base": b["p30_peak"], "p30_peak_scn": s["p30_peak"],
-                       "urgency_base": b["urgency"], "urgency_scn": s["urgency"]})
+                       "urgency_base": b["urgency_peak"], "urgency_scn": s["urgency_peak"], "band_scn": s["band_peak"]})
     df["p30_peak_change"] = df["p30_peak_scn"] - df["p30_peak_base"]
     return df[b["scored"]].sort_values("p30_peak_change", ascending=False)
 

@@ -172,6 +172,7 @@ def test_read_endpoints(root):
     assert all(s["ward"] == w for s in app.get("/segments", params={"ward": w}).json()["segments"])
     plan = app.get("/plan/prevention", params={"scenario": "rain_then_frost"}).json()
     assert plan["scenario_method"] == "sensitivity_surrogate"
+    assert plan["movers"] and plan["movers"][0]["urgency_scn"] >= plan["movers"][0]["urgency_base"]
     assert app.get("/plan/prevention", params={"scenario": "nope"}).status_code == 400
     lights = app.get("/lights", params={"due": True}).json()
     assert lights["synthetic"] and all(l["due_90d"] or l["replacement_overdue"] for l in lights["lamps"])
@@ -213,3 +214,23 @@ def test_retrain_promotes_only_if_better(root):
     better = RT.run(root=root, train_fn=lambda extra: (0.35, {"risk_y30.txt": b"new"}))
     assert better["promoted"] and (md / "risk_y30.txt").read_text() == "new"
     assert any(p.name.startswith("previous_") for p in md.iterdir())
+
+
+def test_gemini_failure_falls_back_to_keywords(root):
+    class Broken:
+        class models:
+            @staticmethod
+            def generate_content(**kw):
+                raise ConnectionError("no network in tests")
+    svc = Service(root=root, client=Broken())
+    wo = svc.triage_report({"fms_id": 111})
+    assert wo["method"].startswith("keyword_baseline (gemini unavailable") and wo["category"] == "pothole"
+    with pytest.raises(RuntimeError):
+        svc.triage_report({"fms_id": 112, "method": "gemini"})
+
+
+def test_warm_precomputes_scenarios(root):
+    svc = Service(root=root)
+    w = svc.warm()
+    assert set(w["warmed_scenarios"]) == {"rain_then_frost", "wet_week", "cold_snap"}
+    assert svc.plan(scenario="cold_snap")["scenario_method"] == "sensitivity_surrogate"

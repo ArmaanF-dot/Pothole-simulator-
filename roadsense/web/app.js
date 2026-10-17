@@ -38,6 +38,10 @@ async function loadPlan() {
     + (p.provisional ? " " + badge("PROVISIONAL", "prov") : "")
     + (p.scenario ? ` What-if <b>${esc(p.scenario)}</b> (${esc(p.scenario_method)}).` : "")
     + ` Ranked by reactive repair cost avoided per £ of treatment (planned ${gbp(p.costs.planned_repair)} vs reactive ${gbp(p.costs.reactive_repair)}, ${esc(p.costs.source)}).`;
+  $("#movers").innerHTML = p.movers.length ? `<div class="card"><b>Biggest risk rises under ${esc(p.scenario)}</b> <span class="small muted">urgency at the 4-week forecast peak, before → after</span>
+    <table class="rows"><tbody>${p.movers.map((m) => `<tr data-id="${esc(m.segment_id)}"><td>${esc(m.name)} <span class="small muted">${esc(m.highway)}${m.bus_stop ? " · bus stop" : ""} · ${fmt(m.esal_day, 0)} ESAL/day</span></td>
+      <td>${fmt(m.urgency_base, 0)} → <span class="u ${m.band_scn}">${fmt(m.urgency_scn, 0)}</span></td><td class="up">+${fmt(m.p30_peak_change)} P30</td></tr>`).join("")}</tbody></table></div>` : "";
+  document.querySelectorAll("#movers tr[data-id]").forEach((tr) => tr.onclick = () => showSegment(tr.dataset.id, true));
   $("#plan-rows").innerHTML = p.rows.map((r) => `<tr data-id="${esc(r.segment_id)}">
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
@@ -150,7 +154,13 @@ window.showSegment = showSegment;
 
 async function triage(fmsId) {
   const btns = document.querySelectorAll("#triage-form button"); btns.forEach((b) => b.disabled = true);
-  try { await post("/reports", { fms_id: Number(fmsId) }); state.lastFms = fmsId; await loadQueue(); }
+  try {
+    const body = { fms_id: Number(fmsId) };
+    const f = $("#photo").files[0];
+    if (f) { body.image_mime = f.type || "image/jpeg";
+      body.image_b64 = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.readAsDataURL(f); }); }
+    await post("/reports", body); state.lastFms = fmsId; $("#photo").value = ""; await loadQueue();
+  }
   catch (e) { alert(e.message); } finally { btns.forEach((b) => b.disabled = false); }
 }
 
@@ -170,7 +180,7 @@ async function loadSources() {
     + `<span>Map © OpenStreetMap contributors</span>`;
 }
 
-async function refresh() { await Promise.all([loadMeta(), loadPlan(), loadMap(), loadQueue()]); }
+async function refresh() { await Promise.all([loadMeta(), loadPlan(), loadMap(), loadQueue()]); state.map.resize(); }
 
 function initMap() {
   state.map = new maplibregl.Map({ container: "map", center: [-1.40, 50.91], zoom: 12, style: {

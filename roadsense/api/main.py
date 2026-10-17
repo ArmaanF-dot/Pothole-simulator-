@@ -39,6 +39,11 @@ def create_app(service: Service | None = None) -> FastAPI:
             holder["svc"] = Service(client=gemini_client(), forecast_as_of=os.environ.get("ROADSENSE_FORECAST_AS_OF"))
         return holder["svc"]
 
+    if service is None and os.environ.get("ROADSENSE_WARM", "1") == "1":
+        @app.on_event("startup")
+        def warm():
+            print("warming:", svc().warm())
+
     @app.get("/health")
     def health():
         return {"ok": True}
