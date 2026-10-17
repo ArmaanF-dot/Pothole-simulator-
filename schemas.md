@@ -202,7 +202,9 @@ p30_peak, p30_rise, treatment_label, avoided_per_gbp, load_confidence, provision
 |---|---|---|
 | `pays_back` | bool | `avoided_per_gbp >= 1.0` |
 | `confirmed_pothole` | bool | `open_fms_report` is true AND triage classifies that report as a road defect |
-| `confirmed_by` | str | `gemini`, `keyword`, or empty if not confirmed |
+| `confirmed_by` | str | one of `""` \| `"keyword"` \| `"gemini"` \| `"crew"` (`""` = not confirmed). If several apply, precedence is **crew > gemini > keyword** |
+| `confirmed_source_id` | str | FixMyStreet request id for `keyword`/`gemini`; inspection/feedback id for `crew`. **Required if `confirmed_by != ""`**, blank otherwise |
+| `confirmed_is_synthetic` | bool | true for `crew` records from simulated feedback. The dashboard labels these "Simulated crew report" and leaves them out of the header's confirmed total |
 | `worth_treating` | bool | `pays_back OR confirmed_pothole`; drives the "Worth treating" tab |
 
 - `avoided_per_gbp` = expected reactive repair cost avoided over the treatment's life / treatment cost (not p30 only); horizon stated in `reports/cost.md`.

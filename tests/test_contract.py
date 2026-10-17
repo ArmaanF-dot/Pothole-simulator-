@@ -115,3 +115,22 @@ def test_risk_output_links(seg):
     assert r[["p7", "p30"]].apply(lambda c: c.between(0, 1)).all().all()
     assert (r.groupby("segment_id").size() == 4).all(), "4 weekly rows per scored segment"
     assert set(r.horizon_week.unique()) <= {1, 2, 3, 4}
+
+
+CONFIRMED_BY = {"", "keyword", "gemini", "crew"}
+
+
+def test_plan_confirmations():
+    """schemas.md section 9: confirmed_by / confirmed_source_id / confirmed_is_synthetic."""
+    path = os.path.join(OUT, "prevention_plan_latest.csv")
+    if not os.path.exists(path):
+        pytest.skip("no outputs/prevention_plan_latest.csv yet")
+    plan = pd.read_csv(path, dtype={"confirmed_by": str, "confirmed_source_id": str}, keep_default_na=False)
+    assert not missing(plan, ["confirmed_by", "confirmed_source_id", "confirmed_is_synthetic"])
+    by = plan["confirmed_by"].str.strip()
+    assert set(by.unique()) <= CONFIRMED_BY, f"confirmed_by outside {sorted(CONFIRMED_BY)}: {set(by) - CONFIRMED_BY}"
+    confirmed = by != ""
+    assert (plan.loc[confirmed, "confirmed_source_id"].str.strip() != "").all(), \
+        "confirmed_source_id is required when confirmed_by is set"
+    crew = plan.loc[by == "crew", "confirmed_is_synthetic"].astype(str).str.strip().str.lower()
+    assert crew.isin(["true", "false", "1", "0"]).all(), "confirmed_is_synthetic must be true/false on crew rows"
