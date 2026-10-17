@@ -399,6 +399,7 @@ def risk_eval_section(res: dict, src: str, provenance: str = "") -> str:
          f"**segments** with replacement ({BOOT_N:,} resamples, seed {BOOT_SEED}) and scores every method on the same "
          "resample. FixMyStreet counts measure reporting, not true pothole rates.", ""]
     blocks = [(c, r, "test years") for c, r in res["cities"].items()]
+    blocks += [(c, r, "leave-one-city-out (trained on the other cities, all usable years)") for c, r in (res.get("loco") or {}).items()]
     blocks += [(c, r, "frozen 2026 check (Jan to Oct)") for c, r in (res.get("frozen_2026") or {}).items()]
     L += ["**Full model** = physical features + past-report features (reports on the segment and its neighbours in earlier "
           "years). **Physical only** = same setup with no past-report feature at all: traffic load (esal_day, DfT HGV and bus flow), "

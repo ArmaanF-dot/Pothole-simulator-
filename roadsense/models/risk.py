@@ -348,7 +348,8 @@ def write_report(path: Path, ev: dict, data: dict, cfg: dict, real: dict, wear_i
         for c, r in ev["loco"].items():
             L.append(f"- {c}: y30 PR-AUC model {_fmt(r['y30']['model']['pr_auc'])} vs prior count {_fmt(r['y30']['prior_pothole_count_only']['pr_auc'])}")
     else:
-        L.append("Not run: only Southampton is in the table. Port-city features come from lane A; logged in DATA_GAPS.md.")
+        L.append("Not applicable to this synthetic-label model: synthetic council data exists for Southampton only. "
+                 "Leave-one-city-out on real labels (Southampton, Brighton, Portsmouth) is in the real-label section below.")
     L += ["", "## Calibration (time split, y30)", "", "![calibration](risk_calibration.png)", "",
           "| Mean predicted | Observed | Rows |", "|---|---|---|"]
     L += [f"| {b['mean_pred']:.4f} | {b['observed']:.4f} | {b['n']:,} |" for b in ev["time"]["_calibration_y30"]]
@@ -374,7 +375,7 @@ def write_report(path: Path, ev: dict, data: dict, cfg: dict, real: dict, wear_i
           + ", ".join(f"{k} {v:+.3f}" for k, v in wear_info["coef"].items()) + ". Resurfacing history is SYNTHETIC, so wear is too.", "",
           "## Not done (see DATA_GAPS.md)", "",
           "- Synthetic plus real labels in one model: not done; the real-label model is separate (section below).",
-          "- Leave-one-city-out: waits on lane A's port-city data.", ""]
+          "- Leave-one-city-out for this synthetic-label model: not applicable (Southampton-only synthetic data); see the real-label section.", ""]
     txt = "\n".join(L)
     # keep the real-label section written by roadsense.models.real_risk
     if path.exists():
