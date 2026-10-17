@@ -70,7 +70,7 @@ One row per piece of road, all cities stacked. Built from OSM (ODbL) `network_ty
 | bus_stop | bool | OSM bus stop within 20 m |
 | bus_routes | int | number of OSM `route=bus` relations using the way |
 | junction | bool | segment ends at a node where ≥4 streets meet, or a mini-roundabout/traffic-signal node (3-way meets are left out: nearly every edge ends at one) |
-| in_flood_area | bool | midpoint in an EA Flood Zone 3 polygon (false if the layer is unavailable; logged) |
+| in_flood_area | bool | midpoint in an EA Flood Zone 3 polygon (rivers and sea, OGL; `python -m roadsense.ingest.flood`) |
 | owner | str | `council` / `national_highways` (motorway or trunk with a National Highways ref) |
 | geometry | WKB | EPSG:4326 LineString |
 | source | str | `osm` |

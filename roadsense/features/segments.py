@@ -94,8 +94,15 @@ def build_city(cfg, city):
     wj = gpd.sjoin_nearest(mid, wards[["ward", "geometry"]], how="left")  # inside = distance 0
     seg["ward"] = wj.groupby(level=0)["ward"].first()
 
-    # EA flood zones not loaded yet: see DATA_GAPS.md
-    seg["in_flood_area"] = False
+    # EA Flood Zone 3 (python -m roadsense.ingest.flood). Without the file every segment is False.
+    fz_path = os.path.join(ROOT, cfg["paths"]["raw_dir"], "flood", f"{c['code']}_fz3.gpkg")
+    if os.path.exists(fz_path):
+        fz = gpd.read_file(fz_path).to_crs(BNG)
+        hit = gpd.sjoin(mid, fz[["geometry"]], predicate="within", how="left")
+        seg["in_flood_area"] = hit.groupby(level=0)["index_right"].apply(lambda s: s.notna().any())
+    else:
+        print(f"  {city}: no flood file, in_flood_area = False")
+        seg["in_flood_area"] = False
 
     mid_ll = mid.to_crs(4326).geometry
     seg["lat"], seg["lon"] = mid_ll.y.round(6), mid_ll.x.round(6)

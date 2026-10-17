@@ -53,6 +53,14 @@ osm:
   # MapIt area id of each council (for ward boundaries: children of type UTW / MTW)
   council_area: {Southampton: 2567, Portsmouth: 2657, Brighton: 2614}
 
+flood:
+  # Environment Agency Flood Map for Planning, rivers and sea (OGL), WFS checked 17 Oct 2026
+  wfs_url: https://environment.data.gov.uk/spatialdata/flood-map-for-planning-flood-zones/wfs
+  layer: "dataset-04532375-a198-476e-985e-0579a0a11b47:Flood_Zones_2_3_Rivers_and_Sea"
+  zone: FZ3                      # in_flood_area = segment midpoint inside a Flood Zone 3 polygon
+  buffer_m: 200
+  page: 1000
+
 load:
   # DfT road traffic statistics (OGL): one AADF CSV per local authority
   dft_url: https://storage.googleapis.com/dft-statistics/road-traffic/downloads/aadf/local_authority_id/dft_aadf_local_authority_id_{la}.csv
