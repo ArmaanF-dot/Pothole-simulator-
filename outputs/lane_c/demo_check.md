@@ -1,12 +1,12 @@
 # Demo dry run
 
-_2026-10-17T18:32:07+00:00, `python -m roadsense.api.demo_check`_
+_2026-10-17T18:44:10+00:00, `python -m roadsense.api.demo_check`_
 
 | Step | Result | Notes |
 | --- | --- | --- |
-| 1 ward plan with sources | PASS | 39 rows in Millbrook; 11 sources in footer (0.1 s) |
-| 2 top segment detail | PASS | Millbrook Flyover / Redbridge Road: urgency 49.3, wear 75.9%, 3 reasons, Patch now, schedule resurfacing (0.1 s) |
-| 3 rain_then_frost moves heavy corridors up | PASS | p30 peak +0.074 on top-10% load vs +0.031 elsewhere; bus segments +0.060; method risk_model (0.0 s) |
+| 1 ward plan with sources | PASS | 40 rows in Millbrook; 11 sources in footer (0.1 s) |
+| 2 top segment detail | PASS | Millbrook Flyover / Redbridge Road: urgency 45.6, wear 75.9%, 3 reasons, Patch now, schedule resurfacing (0.1 s) |
+| 3 rain_then_frost moves heavy corridors up | PASS | p30 peak +0.075 on top-10% load vs +0.032 elsewhere; bus segments +0.062; method risk_model (0.0 s) |
 | 4 triage real report, merge duplicate, approve | PASS | 'Large pothole' -> pothole via keyword_baseline, segment SOU-2235-01 (0.7 m), duplicate merged, approved (0.7 s) |
 | 5 crew outcome re-scores segment | PASS | SOU-2235-01: urgency 70.0 -> 100.0 (0.2 s) |
 | 6 streetlights due and dark | PASS | 3695 lamps due in 90 days, 65 currently dark (0.0 s) |
