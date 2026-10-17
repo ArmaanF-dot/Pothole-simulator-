@@ -35,7 +35,7 @@ python -m roadsense.api           # open http://127.0.0.1:8000
 pytest -q                         # contract + unit tests, no network
 ```
 
-Needs git. `.env` holds `GEMINI_API_KEY` only (free from Google AI Studio); without it the map and plan work and triage
+Needs git. `.env` holds `GEMINI_API_KEY` (free from Google AI Studio) and, for the daily refresh, `ROADSENSE_CONTACT` (a contact put in the User-Agent sent to FixMyStreet and Open-Meteo, e.g. an email or URL; blank = the project's GitHub URL). Without the key the map and plan work and triage
 falls back to keyword classification. Press Ctrl+C to stop the server. `python -m roadsense.api --port 8001` changes the
 port; `--forecast-as-of <ISO date>` pretends the weather forecast was fetched at that time, to show the STALE banner
 and provisional plan. Data was retrieved during the event and is cached in the repo, so no download is needed to run
@@ -48,6 +48,57 @@ Full pipeline (`make all`, or run the `python -m` lines in the `Makefile` on Win
 ingest → features → synthetic → train → plan_risk → synthetic → lights → plan. Every tunable number is in
 `config.yaml`, `config/synthetic.yaml` and `roadsense/prevent/prevent.yaml`. The files the three parts of the
 code pass between them are specified in `schemas.md` and checked by `tests/test_contract.py`.
+
+## Daily refresh
+
+`python -m roadsense.refresh` updates the data the app shows, unattended, without ever breaking it.
+
+```bash
+python -m roadsense.refresh --dry-run          # fetch, build and validate in a temp folder; switch nothing
+python -m roadsense.refresh                    # Southampton and Brighton
+python -m roadsense.refresh --city Brighton    # one city
+```
+
+What it does, per city (Southampton, Brighton):
+1. **FixMyStreet:** pulls only reports newer than the latest one already stored (Open311, agencies 2567 / 2614,
+   1000 per request, the date range is split while a request hits the cap). New reports go through the same
+   road-surface, de-duplication and pavement rules as `roadsense.ingest.fixmystreet`, and every title is passed
+   through `redact()` before it is stored. Descriptions are never stored.
+   The same pull starts at the beginning of the 120-day open window, so it also rechecks the status of every stored
+   report in that window and updates open/closed (a report closed upstream leaves the open layer and the plan).
+   At most one incremental pull per UTC day: a second run the same day reuses that day's reports and only refreshes
+   the weather. Requests to FixMyStreet and Open-Meteo send `User-Agent: RoadSense/1.0 (SotonShip26 hackathon; <contact>)`,
+   with `<contact>` from `ROADSENSE_CONTACT` in `.env` (the project's GitHub URL if unset).
+2. **Open-Meteo:** refreshes the forecast weeks (16-day forecast; `past_days=92` supplies the 90-day windows), at
+   each ward's point from the committed `data/processed/ward_points_<city>.csv`. The refresh never reads `data/raw/`
+   (not committed), so it runs from a fresh clone.
+3. **Never touches** OpenStreetMap, flood zones, wards or DfT counts (no `--refresh` to the OSM ingest).
+4. **Re-scores with the frozen models** in `data/models` (no retraining), rebuilds the Southampton prevention plan
+   and what-if plans, the Brighton inspection list, and triages **new** open reports only (Gemini over the same
+   model fallback list, cached in `outputs/lane_c/triage_<city>.json`; keyword rules without `GEMINI_API_KEY`).
+
+**Safety.** Each run builds a new folder `data/live/<YYYYMMDDTHHMMSSZ>/` (same layout as the repo: `data/processed`,
+`outputs`), starting from the previous build. It is validated against the committed snapshot: identical
+`segment_id`s, same rows and columns in every risk file, no NaN in key columns, labels and weather never shrink.
+Only then is the pointer file `data/live/current` switched. On any failure the previous build stays live, the
+error goes to `data/live/refresh.log` and the command exits 1. The last 7 builds are kept. `data/live/` is
+git-ignored: refreshed data is never committed.
+
+**App.** If `data/live/current` points at a valid build, the app reads from it; otherwise it uses the committed
+snapshot. The header shows "Data updated: <time>" and an amber STALE badge when the data is over 36 hours old.
+Set `ROADSENSE_LIVE=0` to force the committed snapshot.
+
+**Schedule it (Windows).** `scripts\schedule_refresh.bat` registers a Task Scheduler job, "RoadSense daily
+refresh", at 06:00 every day (as the current user, while logged on). It runs `scripts\run_refresh.bat`, which
+logs to `data\live\scheduler.log`. Remove it with `scripts\schedule_refresh.bat /delete`.
+
+**as_of follows the calendar.** Each refresh sets `as_of` to the most recent Monday on or before today (UTC) and
+scores the four weeks after it with the frozen models; the plan header shows that week. If an input cannot be
+built for the new `as_of`, the refresh stops (exit 1, previous build kept) and the log says exactly what is
+missing. Today that matters for Southampton: its history features count the SYNTHETIC council repair log, which
+ends at the synthetic generator's `as_of` (`data/synthetic/_meta.json`, 2026-10-12). From the next Monday a
+Southampton refresh stops until the synthetic data is regenerated to the new `as_of`; Brighton (real FixMyStreet
+history) keeps refreshing with `--city Brighton` until its label table runs out (end of 2026).
 
 ## How well it works
 

@@ -160,6 +160,13 @@ class Service:
         return {"warmed_scenarios": list(self._scenarios), "seconds": round(time.time() - t, 1),
                 "methods": {k: v["scenario_method"].iloc[0] for k, v in self._scenarios.items()}}
 
+    def data_updated(self) -> dict:
+        """Header "Data updated": the live refresh build's finish time (data/live/current), else the newest
+        retrieved_at in the committed sources.json; stale after 36 h (roadsense.refresh.live)."""
+        from roadsense.refresh.live import data_updated
+        snap = max((str(s.get("retrieved_at")) for s in (self.manifest or []) if s.get("retrieved_at")), default=None)
+        return data_updated(snap, now=self.now)
+
     def freshness(self, forecast_as_of: str | None = None) -> dict:
         return P.freshness(self.cfg, self.forecast_meta, forecast_as_of or self.forecast_as_of, now=self.now)
 
