@@ -136,6 +136,11 @@ class Service:
             self._cities[city] = CityView(self.cfg, city, self.root)
         return self._cities[city]
 
+    def city_inspection(self, city: str, top_n: int = 50) -> dict:
+        """Inspection list for a map-only city: open reports in the open window, then top risk ranks."""
+        o = pd.DataFrame(self.open_reports(city=city)["reports"])
+        return self.city_view(city).inspection_list(o, self.cfg, top_n=top_n)
+
     def city_triage(self, city: str) -> dict | None:
         """Cached read-only triage for a map-only city (python -m roadsense.agent.city_triage <city>)."""
         from roadsense.agent.city_triage import load_cached

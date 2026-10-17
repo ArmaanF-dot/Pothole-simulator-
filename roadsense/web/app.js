@@ -33,8 +33,8 @@ async function loadMeta() {
   }
   const sel = $("#ward");
   if (sel.options.length === 1) m.wards.forEach((w) => sel.add(new Option(w, w)));
-  $("#badges").innerHTML = (m.badges.labels_real ? badge("REAL LABELS", "real") + " " : "") + badge("SYNTHETIC", "") + (m.badges.mock_inputs ? badge("MOCK INPUTS", "mock") : "")
-    + (m.freshness.stale ? badge("STALE", "stale") : "") + (m.freshness.provisional ? badge("PROVISIONAL", "prov") : "")
+  $("#badges").innerHTML = `<span class="home-only">` + (m.badges.labels_real ? badge("REAL LABELS", "real") + " " : "") + badge("SYNTHETIC", "") + (m.badges.mock_inputs ? badge("MOCK INPUTS", "mock") : "")
+    + (m.freshness.stale ? badge("STALE", "stale") : "") + (m.freshness.provisional ? badge("PROVISIONAL", "prov") : "") + `</span>`
     + (m.gemini ? "" : ` <span class="muted small">Gemini off: keyword triage</span>`);
   const b = $("#stale");
   b.innerHTML = esc(m.freshness.message + (m.badges.mock_inputs ? " " + m.badges.note : "")) + " · " + OPEN_METEO;
@@ -225,8 +225,8 @@ async function loadLights() {
 
 async function loadSources() {
   const s = await api("/sources");
-  $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span><span title="${esc(x.used_for)}">${esc(x.name)}</span>: ${esc(x.label)}${x.is_synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
-    + (state.meta ? `<span><b>Risk model:</b> ${esc(state.meta.badges.model_label)}</span>` : "")
+  $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span class="${x.is_synthetic ? "home-only" : ""}"><span title="${esc(x.used_for)}">${esc(x.name)}</span>: ${esc(x.label)}${x.is_synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
+    + (state.meta ? `<span class="home-only"><b>Risk model:</b> ${esc(state.meta.badges.model_label)}</span>` : "")
     + `<span>Map © OpenStreetMap contributors</span><span>${OPEN_METEO}</span>`;
 }
 
@@ -263,13 +263,32 @@ async function loadCityTriage(c) {
 }
 window.showCitySegment = showCitySegment;
 
+async function loadInspection(c) {
+  const p = await api("/plan/inspection?" + qs({ city: c }));
+  $("#inspect-head").innerHTML = `<b>${esc(p.header)}</b> ${badge(p.badge, p.badge.startsWith("100%") ? "real" : "")}<br>
+    <span class="small">${p.count} segments: ${p.open_report_rows} with an open FixMyStreet report in the last ${p.window_days} days (first),
+    then the top ${p.top_n} by risk rank in ${esc(c)}.</span>`;
+  const BAND = { top1: "critical", top5: "high", top10: "prevention" };
+  $("#inspect-rows").innerHTML = p.rows.map((r) => `<tr data-id="${esc(r.segment_id)}">
+      <td>${r.rank}</td>
+      <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
+        ${r.open_report ? ` <span class="vb must">open report</span><div class="reasons">${r.open_reports.map((o) => `${esc(o.reported_at)}: ${esc(o.title)}`).join(" · ")}</div>` : ""}
+        <div class="reasons">${esc(r.reasons.join(" · "))}</div></td>
+      <td><span class="u ${BAND[r.risk_band] || "monitor"}">${esc(r.risk_label)}</span></td>
+      <td>${esc(r.action)}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">No segments.</td></tr>`;
+  document.querySelectorAll("#inspect-rows tr[data-id]").forEach((tr) => tr.onclick = () => showCitySegment(tr.dataset.id));
+}
+
 async function setCity(c) {
   state.city = c;
   const other = otherCity();
   document.body.classList.toggle("other-city", other);
   ["#ward-wrap", "#scenario-wrap", "#triage-form", "#queue", "#triage-note"].forEach((s) => $(s).classList.toggle("hidden", other));
   $("#city-triage").classList.toggle("hidden", !other);
-  if (other) loadCityTriage(c);
+  [".subtabs", "#plan-head", "#movers", "#plan-table"].forEach((s) => $(s).classList.toggle("hidden", other));
+  $("#worth-head").classList.toggle("hidden", other || state.planView !== "worth");
+  $("#inspect").classList.toggle("hidden", !other);
+  if (other) { loadCityTriage(c); loadInspection(c); }
   const note = $("#city-note");
   note.classList.toggle("hidden", !other);
   $("#detail").classList.add("hidden");
@@ -277,8 +296,8 @@ async function setCity(c) {
     const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
     note.innerHTML = `<b>${esc(c)}: risk map only</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
       <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
-      Open FixMyStreet reports are on the map and in Report triage (read-only). The prevention plan and streetlights are
-      <b>Southampton only</b>: switch back to see them.</span>`;
+      The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
+      Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;
   }
   if (state.mapReady) {
     const gj = await loadMap();
