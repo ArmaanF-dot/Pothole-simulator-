@@ -18,7 +18,8 @@ GEN = "crew"
 
 
 def _top_segments(seg: pd.DataFrame, potholes: pd.DataFrame, cfg: dict, outputs_dir: Path, n: int):
-    risk_files = sorted(outputs_dir.glob("risk_*.parquet"))
+    risk_files = [p for p in [outputs_dir / "risk_latest.parquet", outputs_dir / "risk_synthetic_latest.parquet"] if p.exists()]
+    risk_files = risk_files[:1] or sorted(outputs_dir.glob("risk_*.parquet"))
     if risk_files:
         r = pd.read_parquet(risk_files[-1])
         r = r[r["segment_id"].isin(seg["segment_id"])]
