@@ -1,0 +1,19 @@
+# Data gaps and cuts
+
+## Lane A (data)
+- **Bournemouth (BCP) has no FixMyStreet data.** BCP Council (MapIt area 152188) does not take FixMyStreet reports: every report there shows "Not reported to council", and the Open311 API returns nothing for that agency (checked 17 Oct 2026). Dropped from all lanes.
+- **Southampton labels only from 2015.** 2011–14 came through the council's old FixMyStreet-branded site, which inflates counts. 2020–2022 has no reports at all. Usable window 2015–2019 (`config.yaml: labels.windows`). Train 2015–17, test 2018–19.
+- **Brighton road reports fall away from mid-2025.** Only one "Pavement and road repairs" report in May–June 2026. Usable window to 2025. Test 2023–25.
+- **2026 is partial (Jan–Oct) and small** (Southampton 35, Portsmouth 46, Brighton 32 road-surface reports). It is a "frozen model" check only, reported with n and a bootstrap range.
+- **Portsmouth is small** (321 labels after cleaning). It is extra training data / a transfer test, not a headline result.
+- **Counts measure FixMyStreet use, not pothole rates.** Scores rank segments within each city and year. Raw totals are never compared across cities.
+- **Pavement filter is keyword-based.** A hand check of 25 Brighton reports each way found about 24/25 kept reports were genuine road defects and 22/25 removed ones genuine pavement defects. Some error stays in the labels.
+- **Labels cover all road classes** (decided 17 Oct). Only 27% of Southampton 2015–19 reports are on A/B roads, so main-road-only labels would drop most of them. Reports more than 25 m from any drivable road (about 2%) are dropped as off-road/pavement.
+- **Most segments have no traffic count of their own.** In Southampton 314 segments use a DfT count point on the same road (≤100 m) and 604 the nearest point on that road. The other 7,227 (89%, mostly residential, tertiary and unreferenced B-roads) get a class median (`load_source=class_median`). Main roads with a real count or same-road value: 44%.
+- **ESAL factors are assumptions** (bus 1.3, rigid 2-axle 0.4 … 6-axle artic 2.2 standard axles). They are not from a council or DMRB, and are only used to rank load.
+- **Flood = EA Flood Zone 3 only (rivers and sea, Flood Map for Planning, OGL).** It doesn't cover surface-water flooding, which matters for potholes but is a separate EA layer. `in_flood_area` = segment midpoint inside a Zone 3 polygon (Southampton 245 segments, 3%).
+- **Junction = 4+ streets or a mini-roundabout/signal node.** In OSM's simplified graph almost every edge ends at a 3-way meet, so those are not counted (16% of Southampton segments are junctions).
+- **Portsmouth wards are ONS (Dec 2024), not MapIt.** MapIt's free quota ran out (HTTP 429), so `roadsense.ingest.osm` falls back to the ONS Open Geography Portal. Ward names are the official ones (checked: ONS and MapIt give identical names for Southampton). `mapit_id` is null for Portsmouth.
+- **Traffic counts by city:** class_median share is Brighton 84% and Portsmouth 82% of segments (Southampton 89%). Brighton's B-road (secondary) median comes out above its A-road (primary) median because of a few busy counted B-roads. It's left as measured.
+- **National Highways roads = motorways only** (10 Southampton segments, M27/M271; 131 Portsmouth, M275/M27). OSM doesn't say who owns trunk A-roads.
+- **B-roads often lack a `ref` in OSM** (64 km of Southampton main road has no ref). They are still `is_main_road` by highway class.
