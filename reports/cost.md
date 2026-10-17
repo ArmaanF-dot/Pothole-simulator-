@@ -1,6 +1,6 @@
 # Running cost of report triage (Gemini)
 
-_Generated 2026-10-17T20:47:28+00:00 by `python -m roadsense.agent.cost` from `outputs/lane_c/token_log.jsonl`. Token counts are what the Gemini API returned in `usage_metadata` for each call (triage through `POST /reports`, the demo, or `Service.triage_report`)._
+_Generated 2026-10-17T20:56:36+00:00 by `python -m roadsense.agent.cost` from `outputs/lane_c/token_log.jsonl`. Token counts are what the Gemini API returned in `usage_metadata` for each call (triage through `POST /reports`, the demo, or `Service.triage_report`)._
 
 ## Measured token counts
 
@@ -33,13 +33,13 @@ Price of `gemini-3-flash-preview`, paid tier: **$0.50 per 1M input tokens, $3.00
 ```
 
 - **£0.00056 per triaged report** (about £0.56 per 1,000 reports).
-- **Yearly cost, upper end: £2.10** if every Southampton pothole repair came in as a triaged report: 3,775 a year, the mean of the council's pothole **repairs** 2021-25 (4,002 / 3,972 / 3,627 / 4,162 / 3,113; FOI via Blackcircles, March 2026). These are repairs, not reports.
+- **Under £3 a year even at Southampton's full yearly repair volume** (3,113 to 4,162 pothole **repairs** a year, 2021-25: £1.74 to £2.32). These are council repairs, not reports: an upper bound that assumes every repair came in as a triaged report. Source: Blackcircles pothole report 2026 (council FOI), https://www.blackcircles.com/news/pothole-report-uk, 18 Mar 2026.
 - **Yearly cost, FixMyStreet only: £0.02**: 40 Southampton FixMyStreet road-surface **reports** in the 12 months to the latest one in the cached pull. Most residents now report through the council's own system, whose volume is not public.
 - Duplicates within 15 m and 14 days reuse the original's triage with no Gemini call, so real call counts are lower.
 
 ## Per officer per month (assumptions)
 
-£0.00056 x 3,775 reports / 12 / 4 officers = **£0.04 LLM** + £25 hosting / 4 = £6.25 -> **£6.29 per officer per month**.
+£0.00056 x 4,162 (upper end, repairs) / 12 / 4 officers = **£0.05 LLM** + £25 hosting / 4 = £6.25 -> **£6.30 per officer per month**.
 
 ## Not measured (assumptions)
 

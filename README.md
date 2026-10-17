@@ -85,7 +85,9 @@ A second team member re-ran it from a clean `main` on 17 Oct and got identical n
 Other evaluations: weekly weather model on synthetic labels (pipeline check only, `reports/risk_eval.md`);
 streetlights (`reports/lights_eval.md`: ranks no better than install year, its value is the replacement date);
 report triage against keyword rules (`reports/triage_vs_keywords.md`; keyword rules 91/100 on hand-labelled real
-reports, Gemini comparison TODO); running cost (`reports/cost.md`, measured tokens, assumed prices).
+reports, Gemini comparison TODO); running cost (`reports/cost.md`: measured tokens at the published Gemini price, about £0.0006 per triaged report;
+under £3 a year even at Southampton's full yearly repair volume of about 3,100 to 4,200 repairs, an upper bound because
+these are repairs, not reports).
 
 ## What is real and what is synthetic
 
@@ -116,7 +118,7 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 
 | Source | What we use it for | Coverage / dates | Licence and attribution |
 |---|---|---|---|
-| **FixMyStreet** (mySociety), Open311 API `fixmystreet.com/open311/v2/requests.json` | Pothole reports, used as training and test labels. Agencies: Southampton 2567, Portsmouth 2657, Brighton & Hove 2614 | Southampton train 2015–17, test 2018–19; Brighton train ≤2022, test 2023–25; Portsmouth extra training. Retrieved 17 Oct 2026, 11:00 UTC | Publicly published reports from mySociety's FixMyStreet. We found no explicit open-data licence, so we use them for non-commercial research only and keep only location, category, status and date. Credit: FixMyStreet / mySociety. [CONFIRM: ask organisers or mySociety] |
+| **FixMyStreet** (mySociety), Open311 API `fixmystreet.com/open311/v2/requests.json` | Pothole reports, used as training and test labels. Agencies: Southampton 2567, Portsmouth 2657, Brighton & Hove 2614 | Southampton train 2015–17, test 2018–19; Brighton train ≤2022, test 2023–25; Portsmouth extra training. Retrieved 17 Oct 2026, 11:00 UTC | No explicit licence stated; public reports via mySociety's Open311 API, attributed. Used for non-commercial research only; we keep only location, category, status, date and a redacted title. Credit: FixMyStreet / mySociety |
 | **OpenStreetMap** | Road network split into segments (22,334 across 3 cities), road class (`is_main_road`), cycle routes, schools and hospitals | Extract retrieved 17 Oct 2026, 12:03 UTC | © OpenStreetMap contributors, Open Database Licence (ODbL) 1.0. openstreetmap.org/copyright |
 | **DfT road traffic statistics** | Traffic load per segment (AADF incl. HGVs). 314 Southampton segments have a direct count; the rest use road-class medians, shown in the app as "modelled estimate" | Count year up to 2025, retrieved 17 Oct 2026, 12:22 UTC | Open Government Licence v3.0. Contains public sector information licensed under the OGL v3.0 |
 | **Environment Agency Flood Map for Planning: Flood Zone 3** | Flood exposure feature | Retrieved 17 Oct 2026, 12:45 UTC | Open Government Licence v3.0. © Environment Agency copyright and/or database right. Contains OS data © Crown copyright and database right |

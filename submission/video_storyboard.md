@@ -60,7 +60,7 @@ below on the final build.
 
 1. Click the map in the Solent (outside the city): "Outside Southampton coverage". Click the grey M271:
    "National Highways road, not scored".
-2. Say: "a licence per council or contractor; Gemini triage costs about £2 a year at Southampton's volume
+2. Say: "a licence per council or contractor; Gemini triage costs under £3 a year even at Southampton's full yearly repair volume
    (reports/cost.md); a second city needs its boundary and its own repair log."
 
 ## Re-check after Aryan's merge

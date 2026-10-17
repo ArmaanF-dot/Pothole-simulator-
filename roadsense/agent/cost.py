@@ -9,6 +9,7 @@ officers and hosting are config ASSUMPTIONS and are printed as such.
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,8 +28,11 @@ PRICES = {
 }
 # gemini-flash-latest is not listed on that page: calls answered by it are shown but not priced.
 
-# Southampton yearly volumes (the two ends of the range; see reports/cost.md)
-REPAIRS_PER_YEAR = (4002 + 3972 + 3627 + 4162 + 3113) / 5  # council FOI pothole repairs 2021-25 (Blackcircles, Mar 2026)
+# Southampton pothole REPAIRS a year (council FOI, Blackcircles pothole report 2026, published 18 Mar 2026; verified
+# 17 Oct 2026). These are repairs, not reports: the yearly cost is given as an upper bound over this range.
+REPAIRS = {2021: 4002, 2022: 3972, 2023: 3627, 2024: 4162, 2025: 3113}
+REPAIRS_SOURCE = "Blackcircles pothole report 2026 (council FOI), https://www.blackcircles.com/news/pothole-report-uk, 18 Mar 2026"
+REPAIRS_PER_YEAR = max(REPAIRS.values())  # upper end used for the bound and the per-officer figure
 
 
 def read_log(cfg: dict, root: Path | None = None) -> pd.DataFrame:
@@ -124,9 +128,10 @@ def write_cost_report(cfg: dict | None = None, root: Path | None = None) -> Path
               f" = £{r['gbp_per_report']:.6f}",
               "```", "",
               f"- **£{r['gbp_per_report']:.5f} per triaged report** (about £{r['gbp_per_report'] * 1000:.2f} per 1,000 reports).",
-              f"- **Yearly cost, upper end: £{r['gbp_per_year_repairs']:.2f}** if every Southampton pothole repair came in as a "
-              f"triaged report: {r['repairs_per_year']:,.0f} a year, the mean of the council's pothole **repairs** 2021-25 "
-              "(4,002 / 3,972 / 3,627 / 4,162 / 3,113; FOI via Blackcircles, March 2026). These are repairs, not reports.",
+              f"- **Under £{math.ceil(r['gbp_per_year_repairs']):.0f} a year even at Southampton's full yearly repair volume** "
+              f"({min(REPAIRS.values()):,} to {max(REPAIRS.values()):,} pothole **repairs** a year, 2021-25: "
+              f"£{r['gbp_per_report'] * min(REPAIRS.values()):.2f} to £{r['gbp_per_year_repairs']:.2f}). These are council "
+              f"repairs, not reports: an upper bound that assumes every repair came in as a triaged report. Source: {REPAIRS_SOURCE}.",
               (f"- **Yearly cost, FixMyStreet only: £{r['gbp_per_year_fms']:.2f}**: {r['fms_reports_per_year']} Southampton "
                "FixMyStreet road-surface **reports** in the 12 months to the latest one in the cached pull. Most residents now "
                "report through the council's own system, whose volume is not public."
@@ -134,7 +139,7 @@ def write_cost_report(cfg: dict | None = None, root: Path | None = None) -> Path
               "- Duplicates within 15 m and 14 days reuse the original's triage with no Gemini call, so real call counts are lower.",
               "",
               "## Per officer per month (assumptions)", "",
-              f"£{r['gbp_per_report']:.5f} x {r['repairs_per_year']:,.0f} reports / 12 / {c['officers']} officers = "
+              f"£{r['gbp_per_report']:.5f} x {r['repairs_per_year']:,.0f} (upper end, repairs) / 12 / {c['officers']} officers = "
               f"**£{r['llm_gbp_per_officer_month']:.2f} LLM** + £{c['hosting_gbp_per_month']} hosting / {c['officers']} = "
               f"£{r['hosting_gbp_per_officer_month']:.2f} -> **£{r['total_gbp_per_officer_month']:.2f} per officer per month**.", ""]
     L += ["## Not measured (assumptions)", "",
