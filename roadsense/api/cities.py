@@ -51,9 +51,8 @@ class CityView:
             raise FileNotFoundError("segments.parquet")
         cols = [c for c in ["segment_id", "name", "ref", "highway", "ward", "geometry", "lat", "lon", "owner"] if c in seg]
         df = seg[cols].merge(risk.drop(columns=[c for c in ["ward"] if c in risk]), on="segment_id", how="inner")
-        ref = df["ref"].fillna("") if "ref" in df else pd.Series("", index=df.index)
-        df["name"] = df["name"].fillna("").where(df["name"].fillna("") != "", ref)
-        df["name"] = df["name"].where(df["name"] != "", "Unnamed " + df["highway"].astype(str) + " road")
+        df = df.reset_index(drop=True)
+        df["name"] = I.display_names(df)
         pct = df["rank_pct"] if "rank_pct" in df and df["rank_pct"].notna().any() else df["p30"].rank(pct=True)
         df["rank_pct"] = pct.astype(float)
         df["risk_band"] = np.select([df["rank_pct"] >= t for t, _ in RANK_BANDS], [b for _, b in RANK_BANDS], "rest")

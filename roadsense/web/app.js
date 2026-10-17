@@ -104,7 +104,7 @@ async function loadMap() {
     gj.features.forEach((f) => f.geometry.coordinates.forEach((c) => b.extend(c)));
     if (!b.isEmpty()) state.map.fitBounds(b, { padding: 20, duration: 0 });
   }
-  const open = await api("/reports/open");
+  const open = await api("/reports/open" + (otherCity() ? "?" + qs({ city: state.city }) : ""));
   const fc = { type: "FeatureCollection", features: open.reports.map((r) => ({ type: "Feature",
     properties: { title: r.title, date: r.reported_at, id: r.id }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } })) };
   if (state.map.getSource("open")) state.map.getSource("open").setData(fc); else {
@@ -112,9 +112,9 @@ async function loadMap() {
     state.map.addLayer({ id: "open", type: "circle", source: "open", paint: { "circle-radius": 5, "circle-color": "#000",
       "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
     state.map.on("click", "open", (e) => { e.preventDefault(); const p = e.features[0].properties;
-      new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Open FixMyStreet report</b><br>${esc(p.title)}<br>Reported ${esc(p.date)} · urgency 100`).addTo(state.map); });
+      new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Open FixMyStreet report</b><br>${esc(p.title)}<br>Reported ${esc(p.date)}${otherCity() ? "" : " · urgency 100"}`).addTo(state.map); });
   }
-  state.map.setLayoutProperty("open", "visibility", otherCity() ? "none" : "visible");  // Southampton reports only
+  state.map.setLayoutProperty("open", "visibility", "visible");  // the selected city's open reports (same open window)
   return gj;
 }
 
@@ -248,11 +248,28 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== "tab-" + b.dataset.tab));
   if (b.dataset.tab === "lights") loadLights();
 });
+async function loadCityTriage(c) {
+  let t;
+  try { t = await api("/triage/city?" + qs({ city: c })); }
+  catch (e) { $("#city-triage").innerHTML = `<p class="muted">No cached triage for ${esc(c)} yet.</p>`; return; }
+  $("#city-triage").innerHTML = `<p class="muted small"><b>${esc(c)}: read-only triage</b> of ${t.count} open FixMyStreet report(s) from the last
+    ${t.window_days} days (method: ${esc(t.methods.join(", ") || "none")}, cached ${esc(String(t.generated_at).slice(0, 16).replace("T", " "))}).
+    No work orders: ${esc(c)} is map only.</p>` + (t.reports.map((w) => `<div class="card ${w.status === "merged" ? "merged" : ""}">
+    <div><span class="status">${esc(w.status)}</span> · <b>${esc(w.category)}</b> (${esc(w.method)}${w.model ? ", " + esc(w.model) : ""})</div>
+    <div>${esc(w.title)} <span class="muted small">reported ${esc(w.reported_at)} · ${esc(w.report_id)}</span></div>
+    <div class="small">${w.segment_id ? `Segment <a href="#" onclick="showCitySegment('${esc(w.segment_id)}');return false">${esc(w.segment_name)}</a> (${fmt(w.snap_m, 0)} m) · ${esc(w.risk_label || "")}` : "Not within 30 m of a council road"}</div>
+    ${w.merged_into ? `<div class="small">Merged into ${esc(w.merged_into)}: same defect within 15 m and 14 days</div>` : ""}</div>`).join("")
+    || `<p class="muted">No open reports in the window.</p>`);
+}
+window.showCitySegment = showCitySegment;
+
 async function setCity(c) {
   state.city = c;
   const other = otherCity();
   document.body.classList.toggle("other-city", other);
-  ["#ward-wrap", "#scenario-wrap"].forEach((s) => $(s).classList.toggle("hidden", other));
+  ["#ward-wrap", "#scenario-wrap", "#triage-form", "#queue", "#triage-note"].forEach((s) => $(s).classList.toggle("hidden", other));
+  $("#city-triage").classList.toggle("hidden", !other);
+  if (other) loadCityTriage(c);
   const note = $("#city-note");
   note.classList.toggle("hidden", !other);
   $("#detail").classList.add("hidden");
@@ -260,7 +277,8 @@ async function setCity(c) {
     const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
     note.innerHTML = `<b>${esc(c)}: risk map only</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
       <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
-      The prevention plan, report triage and streetlights are <b>Southampton only</b>: switch back to see them.</span>`;
+      Open FixMyStreet reports are on the map and in Report triage (read-only). The prevention plan and streetlights are
+      <b>Southampton only</b>: switch back to see them.</span>`;
   }
   if (state.mapReady) {
     const gj = await loadMap();
