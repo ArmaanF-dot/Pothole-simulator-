@@ -1,6 +1,6 @@
 """RoadSense API (M8). Run with `python -m roadsense.api` (Makefile: `make serve`).
 
-GET  /segments            ward, band, scenario filters; ?format=geojson for the map
+GET  /segments            GeoJSON (contract section 10); ward, band, scenario; ?detail=full, ?format=json
 GET  /segments/{id}
 GET  /locate              lat, lon -> segment, or out_of_coverage / National Highways
 GET  /plan/prevention     ward, scenario (rain_then_frost, wet_week, cold_snap), forecast_as_of
@@ -61,8 +61,10 @@ def create_app(service: Service | None = None) -> FastAPI:
 
     @app.get("/segments")
     def segments(ward: str | None = None, band: str | None = None, scenario: str | None = None,
-                 format: str = Query("json", pattern="^(json|geojson)$"), limit: int | None = None):
-        return svc().segments(ward=ward, band=band, scenario=scenario, geojson=format == "geojson", limit=limit)
+                 format: str = Query("geojson", pattern="^(json|geojson)$"), limit: int | None = None,
+                 detail: str = Query("map", pattern="^(map|full)$")):
+        return svc().segments(ward=ward, band=band, scenario=scenario, geojson=format == "geojson", limit=limit,
+                              full=detail == "full")
 
     @app.get("/segments/{segment_id}")
     def segment(segment_id: str, scenario: str | None = None):
@@ -83,8 +85,9 @@ def create_app(service: Service | None = None) -> FastAPI:
             raise HTTPException(400, str(e))
 
     @app.get("/lights")
-    def lights(ward: str | None = None, due: bool = False, dark: bool = False, limit: int = 500):
-        return svc().lights_view(ward=ward, due=due, dark=dark, limit=limit)
+    def lights(ward: str | None = None, due: bool = False, dark: bool = False, limit: int = 500,
+               due_days: int | None = None):
+        return svc().lights_view(ward=ward, due=due, dark=dark, limit=limit, due_days=due_days)
 
     @app.get("/reports/open")
     def open_reports():

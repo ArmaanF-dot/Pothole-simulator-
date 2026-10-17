@@ -8,6 +8,7 @@ forecast to rise, ranked by expected reactive cost avoided per £ of treatment.
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,6 +39,10 @@ def freshness(cfg: dict, forecast_meta: dict, forecast_as_of: str | None = None,
                         "Plan is provisional.") if stale else f"Forecast retrieved {age:.0f} h ago."}
 
 
+TRAFFIC_NOTE = {"high": "DfT count on this segment", "medium": "DfT count on the same road",
+                "low": "modelled estimate, low confidence"}
+
+
 def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | None = None) -> pd.DataFrame:
     """One row per segment (council and National Highways) with urgency, band and treatment.
 
@@ -45,9 +50,13 @@ def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | Non
     from approved work orders and crew outcomes. National Highways roads are kept but never scored.
     """
     feedback = feedback or {}
-    keep = [c for c in ["segment_id", "osm_way_id", "name", "highway", "ward", "length_m", "lat", "lon", "geometry",
-                        "owner", "bus_stop", "junction", "in_flood_area", "esal_day", "esal_confidence",
-                        "cycle_route", "near_school_hospital", "bus_route", "bus_departures", "input_source"] if c in seg]
+    if "load_confidence" not in seg:
+        seg = I._segment_defaults(seg)
+    risk = I.normalise_risk(risk)
+    keep = [c for c in ["segment_id", "osm_way_id", "name", "ref", "highway", "is_main_road", "ward", "length_m", "lat",
+                        "lon", "geometry", "owner", "bus_stop", "bus_routes", "junction", "in_flood_area", "esal_day",
+                        "hgv_bus_aadf", "load_source", "load_confidence", "count_year", "cycle_route",
+                        "near_school_hospital", "bus_route", "bus_departures", "input_source"] if c in seg]
     df = seg[keep].merge(risk.drop(columns=[c for c in ["ward"] if c in risk and "ward" in seg]),
                          on="segment_id", how="left")
     nh = (df["owner"] == "national_highways") | (df["highway"] == "motorway")
@@ -81,14 +90,16 @@ def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | Non
     df["expected_repairs_avoided"] = T.expected_avoided(df[P30_WEEKS].mean(axis=1), df["treatment"], cfg)
     df["reactive_cost_avoided_gbp"] = (df["expected_repairs_avoided"] * cfg["costs"]["reactive_repair"]).round(2)
     df["avoided_per_gbp"] = (df["reactive_cost_avoided_gbp"] / df["treatment_cost_gbp"]).round(4)
-    df["traffic_note"] = np.where(df["esal_confidence"].eq("count"), "DfT count on this road",
-                                  "modelled estimate, low confidence")
+    df["wear"] = df["wear_pct"]
+    df["open_fms_report"] = df["segment_id"].map(lambda s: bool(feedback.get(s, {}).get("open_report"))) | df["confirmed_open"]
+    df["uses_synthetic"] = df["labels_synthetic"].astype("boolean").fillna(True).astype(bool) if "labels_synthetic" in df else True
+    df["traffic_note"] = df["load_confidence"].map(TRAFFIC_NOTE).fillna(TRAFFIC_NOTE["low"])
     df["status"] = np.where(nh, "National Highways road, not scored",
                             np.where(df["p30"].isna(), "no risk score", "scored"))
     return df
 
 
-def build_plan(scored: pd.DataFrame, cfg: dict, ward: str | None = None) -> pd.DataFrame:
+def build_plan(scored: pd.DataFrame, cfg: dict, ward: str | None = None, data_dates: dict | None = None) -> pd.DataFrame:
     p = scored[scored["scored"] & (scored["band"] == "prevention") & (scored["p30_rise"] > cfg["plan"]["min_rise"])]
     if ward:
         p = p[p["ward"] == ward]
@@ -104,26 +115,38 @@ def build_plan(scored: pd.DataFrame, cfg: dict, ward: str | None = None) -> pd.D
          f"x £{c['reactive_repair']:.2f} = £{r['reactive_cost_avoided_gbp']:.2f} for £{r['treatment_cost_gbp']:.2f} "
          f"(treatment £/m² is an assumption; planned repair £{c['planned_repair']:.2f} vs reactive £{c['reactive_repair']:.2f}, {c['source']})")
         for r in p.to_dict("records")]
+    p["cost_planned_gbp"] = p["treatment_cost_gbp"]
+    p["cost_reactive_avoided_gbp"] = p["reactive_cost_avoided_gbp"]
+    p["data_dates"] = json.dumps(data_dates or {})
     return p
 
 
-PLAN_COLS = ["rank", "segment_id", "name", "ward", "highway", "urgency", "band", "wear_pct", "p30_w0", "p30_peak",
-             "p30_rise", "consequence", "consequence_text", "treatment", "treatment_label", "treatment_cost_gbp",
-             "reactive_cost_avoided_gbp", "avoided_per_gbp", "reasons", "cost_logic", "esal_day", "traffic_note",
-             "weather_source", "model_version", "as_of", "labels_synthetic", "wear_synthetic", "inputs_mock"]
+# contract section 9 first (docs/contract_outputs.md), then lane C extras the page shows
+CONTRACT_COLS = ["rank", "segment_id", "ward", "name", "ref", "band", "urgency", "p30", "wear", "treatment",
+                 "reason_1", "reason_2", "reason_3", "cost_planned_gbp", "cost_reactive_avoided_gbp", "open_fms_report",
+                 "uses_synthetic", "data_dates"]
+PLAN_COLS = CONTRACT_COLS + ["highway", "p30_peak", "p30_rise", "consequence", "consequence_text", "treatment_label",
+                             "avoided_per_gbp", "reasons", "cost_logic", "esal_day", "load_confidence", "traffic_note",
+                             "weather_source", "model_version", "as_of", "labels_synthetic", "wear_synthetic",
+                             "inputs_mock", "p30_w0"]
+
+
+def data_dates(seg_meta: dict, risk_meta: dict, fresh: dict) -> dict:
+    return {"segments": (seg_meta.get("retrieved_at") or "")[:10] or None, "risk": risk_meta.get("as_of"),
+            "forecast": fresh.get("forecast_retrieved_at")}
 
 
 def run(cfg: dict | None = None, root: Path | None = None, forecast_as_of: str | None = None,
         scenario: str | None = None, feedback: dict | None = None, write: bool = True, verbose: bool = True) -> dict:
     cfg = cfg or I.load_config()
     seg, seg_meta = I.load_segments(cfg, root)
-    risk, risk_meta = I.load_risk(cfg, root)
+    risk, risk_meta = I.load_risk(cfg, root, seg=seg)
     if scenario:
         from roadsense.prevent.whatif import apply_scenario
         risk = apply_scenario(risk, seg, scenario, cfg, root=root)
     sc = score(seg, risk, cfg, feedback)
-    plan = build_plan(sc, cfg)
     fresh = freshness(cfg, I.load_forecast_meta(cfg, root), forecast_as_of)
+    plan = build_plan(sc, cfg, data_dates=data_dates(seg_meta, risk_meta, fresh))
     plan["provisional"] = fresh["provisional"]
     out = None
     if write:

@@ -107,8 +107,8 @@ def run(live_gemini: bool = False) -> list[tuple[str, bool, str]]:
 
         def s6():
             l = svc.lights_view(due=True)
-            return l["count_due_90d"] > 0 or l["count_currently_dark"] > 0, \
-                f"{l['count_due_90d']} lamps due in 90 days, {l['count_currently_dark']} currently dark"
+            return l["count_due"] > 0 or l["count_currently_dark"] > 0, \
+                f"{l['count_due']} lamps due in 90 days, {l['count_currently_dark']} currently dark"
         step("6 streetlights due and dark", s6)
 
         def f1():
@@ -136,7 +136,7 @@ def run(live_gemini: bool = False) -> list[tuple[str, bool, str]]:
         def f4():
             srcs = svc.sources()
             cached = [s for s in srcs if str(s.get("label", "")).startswith("cached, retrieved")]
-            return len(cached) > 0, ", ".join(f"{s['dataset']}: {s['label']}" for s in cached)
+            return len(cached) > 0, ", ".join(f"{s['name']}: {s['label']}" for s in cached)
         step("F4 cached copy labelled with retrieval date", f4)
     finally:
         tl = tmp / "token_log.jsonl"  # keep real token counts for reports/cost.md

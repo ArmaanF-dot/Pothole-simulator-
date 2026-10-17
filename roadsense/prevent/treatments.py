@@ -4,6 +4,8 @@
 - low wear with cracking        -> crack sealing
 - prevention-window wear        -> surface dressing
 - high wear                     -> patch now, schedule resurfacing
+- very high wear                -> resurface
+Treatment codes follow docs/contract_outputs.md section 9.
 """
 from __future__ import annotations
 
@@ -23,8 +25,9 @@ def choose(wear_pct, cracking, confirmed_open, cfg: dict) -> np.ndarray:
     w = np.nan_to_num(np.asarray(wear_pct, float))
     cracking = np.asarray(cracking, bool)
     return np.select(
-        [np.asarray(confirmed_open, bool), w >= t["high_wear_min"], w >= t["low_wear_max"], cracking],
-        ["permanent_repair", "patching", "surface_dressing", "crack_sealing"],
+        [np.asarray(confirmed_open, bool), w >= t["resurface_wear_min"], w >= t["high_wear_min"], w >= t["low_wear_max"],
+         cracking],
+        ["permanent_repair", "resurface", "patch", "surface_dressing", "crack_sealing"],
         # low wear and no cracking seen: crack sealing is the cheapest preventive option, flagged
         "crack_sealing")
 
@@ -36,7 +39,7 @@ def treatment_cost(treatment: pd.Series, length_m: pd.Series, highway: pd.Series
     per = treatment.map(t["cost_per_m2"]).astype(float)
     cost = area * per
     # patching costs a patch visit now, resurfacing is scheduled separately (shown, not summed)
-    cost = cost.where(treatment != "patching", t["patch_area_m2"] * t["cost_per_m2"]["patching"])
+    cost = cost.where(treatment != "patch", t["patch_area_m2"] * t["cost_per_m2"]["patch"])
     cost = cost.where(treatment != "permanent_repair", c["planned_repair"])
     return cost.round(2)
 

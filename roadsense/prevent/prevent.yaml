@@ -4,6 +4,7 @@
 
 paths:
   processed_dir: data/processed            # lane A
+  lane_c_copy_dir: roadsense/prevent/mock_data   # copy of lane A real Southampton segments + load until the merge
   lane_b_mock_dir: data/synthetic/mock_inputs
   synthetic_dir: data/synthetic            # lane B
   models_dir: data/models                  # lane B
@@ -39,20 +40,21 @@ urgency:
 treatments:                                # ASSUMPTION thresholds on wear (0-100)
   low_wear_max: 40
   high_wear_min: 75
+  resurface_wear_min: 90                   # ASSUMPTION: beyond patching
   cost_per_m2:                             # ASSUMPTION placeholders, GBP
     crack_sealing: 3.0
     surface_dressing: 7.0
-    patching: 45.0
-    resurfacing: 30.0
+    patch: 45.0
+    resurface: 30.0
   lane_width_m: {A: 7.3, BC: 6.5, residential: 5.5}
   patch_area_m2: 2.0                       # ASSUMPTION per planned repair visit
-  hazard_multiplier: {crack_sealing: 0.6, surface_dressing: 0.6, patching: 0.8, resurfacing: 0.3}
+  hazard_multiplier: {crack_sealing: 0.6, surface_dressing: 0.6, patch: 0.8, resurface: 0.3}
   benefit_years: 2                         # spec: preventive treatment cuts hazard for 2 years
   label:
     crack_sealing: "Crack sealing"
     surface_dressing: "Surface dressing"
-    patching: "Patch now, schedule resurfacing"
-    resurfacing: "Schedule resurfacing"
+    patch: "Patch now, schedule resurfacing"
+    resurface: "Schedule resurfacing"
     permanent_repair: "Permanent pothole repair"
     monitor: "Monitor"
 

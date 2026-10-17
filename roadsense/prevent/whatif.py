@@ -76,6 +76,8 @@ def model_rescore(risk: pd.DataFrame, scenario: str, cfg: dict, root: Path | Non
             pert.loc[m, f] = pert.loc[m, f] + v
     diff = pd.DataFrame({"segment_id": fwd["segment_id"], "k": fwd["horizon_week"], "d": predict(pert) - base})
     piv = diff.pivot_table(index="segment_id", columns="k", values="d")
+    if risk["segment_id"].isin(piv.index).mean() < 0.5:
+        return None  # lane B's model runs on other segment ids (mock risk on real segments): use the surrogate
     out = risk.copy()
     for k in piv.columns:
         col = f"p30_w{k}"

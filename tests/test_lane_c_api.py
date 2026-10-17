@@ -150,7 +150,7 @@ def test_keyword_fallback_without_gemini(root):
 def test_failure_cases(root):
     app = TestClient(create_app(Service(root=root, forecast_as_of="2026-10-01T06:00:00+00:00")))
     assert app.get("/locate", params={"lat": 51.5, "lon": -0.1}).json()["status"] == "out_of_coverage"
-    mw = app.get("/segments", params={"band": "not_scored"}).json()["segments"]
+    mw = app.get("/segments", params={"band": "not_scored", "format": "json"}).json()["segments"]
     m = mw[0]
     loc = app.get("/locate", params={"lat": m["lat"], "lon": m["lon"]}).json()
     assert loc["status"] == "national_highways" and "not scored" in loc["message"]
@@ -158,28 +158,34 @@ def test_failure_cases(root):
     assert wo["status"] == "out_of_coverage"
     plan = app.get("/plan/prevention").json()
     assert plan["freshness"]["stale"] and plan["provisional"]
-    seg = app.get("/segments", params={"limit": 5}).json()["segments"]
-    assert all(s["traffic_note"] in ("DfT count on this road", "modelled estimate, low confidence") for s in seg)
+    seg = app.get("/segments", params={"limit": 5, "format": "json"}).json()["segments"]
+    assert all(s["traffic_note"] in ("DfT count on this segment", "modelled estimate, low confidence") for s in seg)
 
 
 def test_read_endpoints(root):
     app = TestClient(create_app(Service(root=root)))
     meta = app.get("/meta").json()
     assert meta["badges"]["synthetic"] and meta["wards"]
-    gj = app.get("/segments", params={"format": "geojson"}).json()
+    gj = app.get("/segments").json()
     assert gj["type"] == "FeatureCollection" and gj["features"][0]["geometry"]["type"] == "LineString"
     w = meta["wards"][0]
-    assert all(s["ward"] == w for s in app.get("/segments", params={"ward": w}).json()["segments"])
+    assert all(f["properties"]["ward"] == w for f in app.get("/segments", params={"ward": w}).json()["features"])
+    full = app.get("/segments", params={"detail": "full", "limit": 3}).json()["features"][0]["properties"]
+    assert {"p30", "wear", "urgency", "band", "load_confidence", "uses_synthetic"} <= set(full)
+    one = app.get("/segments/X003-004").json()
+    assert one["type"] == "Feature" and len(one["risk_weeks"]) == 4 and "load_confidence" in one["load"]
     plan = app.get("/plan/prevention", params={"scenario": "rain_then_frost"}).json()
     assert plan["scenario_method"] == "sensitivity_surrogate"
     assert plan["movers"] and plan["movers"][0]["urgency_scn"] >= plan["movers"][0]["urgency_base"]
     assert app.get("/plan/prevention", params={"scenario": "nope"}).status_code == 400
-    lights = app.get("/lights", params={"due": True}).json()
-    assert lights["synthetic"] and all(l["due_90d"] or l["replacement_overdue"] for l in lights["lamps"])
+    lights = app.get("/lights", params={"due_days": 90}).json()
+    assert lights["synthetic"] and all(l["due"] or l["replacement_overdue"] for l in lights["lamps"])
+    lamp = app.get("/lights", params={"limit": 1}).json()["lamps"][0]
+    assert {"lamp_type", "replace_by", "dark_source", "uses_synthetic"} <= set(lamp)
     srcs = app.get("/sources").json()
-    names = {s["dataset"] for s in srcs}
+    names = {s["name"] for s in srcs}
     assert {"segments", "risk", "lights", "fixmystreet_reports", "weather_forecast"} <= names
-    assert all({"licence", "retrieved_at", "synthetic"} <= set(s) for s in srcs)
+    assert all({"name", "used_for", "licence", "retrieved_at", "data_date", "is_synthetic"} <= set(s) for s in srcs)
     assert app.get("/segments/nope").status_code == 404
     assert app.get("/").status_code == 200
 

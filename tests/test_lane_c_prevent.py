@@ -12,7 +12,7 @@ from roadsense.prevent import plan as P
 from roadsense.prevent import treatments as T
 from roadsense.prevent import urgency as U
 from roadsense.prevent import whatif as W
-from roadsense.prevent.mock import mock_world
+from roadsense.prevent.mock import mock_risk, mock_world
 
 
 @pytest.fixture(scope="module")
@@ -50,8 +50,9 @@ def test_consequence_weights_multiply_and_cap(cfg):
 
 
 def test_treatment_rules(cfg):
-    t = T.choose([10, 10, 55, 90, 20], [True, False, False, False, False], [False, False, False, False, True], cfg)
-    assert list(t) == ["crack_sealing", "crack_sealing", "surface_dressing", "patching", "permanent_repair"]
+    t = T.choose([10, 10, 55, 80, 95, 20], [True, False, False, False, False, False],
+                 [False, False, False, False, False, True], cfg)
+    assert list(t) == ["crack_sealing", "crack_sealing", "surface_dressing", "patch", "resurface", "permanent_repair"]
 
 
 def test_score_skips_national_highways(cfg, world):
@@ -70,8 +71,11 @@ def test_plan_is_prevention_band_rising_and_ranked(cfg, world, tmp_path):
     assert (plan["p30_rise"] > 0).all()
     assert plan["avoided_per_gbp"].is_monotonic_decreasing
     out = pd.read_csv(res["path"])
-    for c in ["reasons", "treatment", "treatment_label", "cost_logic", "treatment_cost_gbp", "reactive_cost_avoided_gbp"]:
+    assert list(out.columns[:len(P.CONTRACT_COLS)]) == P.CONTRACT_COLS  # docs/contract_outputs.md section 9
+    for c in ["reasons", "treatment", "treatment_label", "cost_logic", "cost_planned_gbp", "cost_reactive_avoided_gbp",
+              "band", "urgency", "p30", "wear", "data_dates"]:
         assert out[c].notna().all(), c
+    assert set(out["treatment"]) <= {"crack_sealing", "surface_dressing", "patch", "resurface", "permanent_repair"}
     assert "87.80" in out["cost_logic"].iloc[0] and "56.94" in out["cost_logic"].iloc[0]
     assert res["path"].name.startswith("prevention_plan_")
 
@@ -145,3 +149,26 @@ def test_model_path_when_lane_b_present(cfg):
     q = cmp_["esal_day"].quantile([0.1, 0.9])
     assert (cmp_.loc[cmp_["esal_day"] >= q.iloc[1], "p30_peak_change"].mean()
             > cmp_.loc[cmp_["esal_day"] <= q.iloc[0], "p30_peak_change"].mean())
+
+
+def test_normalise_contract_long_risk(world):
+    long = mock_risk(world["segments"])
+    assert {"horizon_week", "wear", "uses_synthetic", "uses_forecast", "weather_data_date"} <= set(long.columns)
+    r = I.normalise_risk(long)
+    assert r["segment_id"].is_unique and {"p30_w0", "p30_w3", "wear_pct", "labels_synthetic"} <= set(r.columns)
+    assert (r["p30_w0"] == r["p30"]).all()
+
+
+def test_real_segments_copy_with_mock_risk(cfg):
+    if not (I.resolve(cfg, "lane_c_copy_dir") / "segments.parquet").exists():
+        pytest.skip("no copy of lane A segments")
+    seg, meta = I.load_segments(cfg, root=I.ROOT)
+    if meta["kind"] != "real":
+        pytest.skip("real segments not in use")
+    risk, rmeta = I.load_risk(cfg, root=I.ROOT, seg=seg)
+    sc = P.score(seg, risk, cfg)
+    assert sc["ward"].nunique() == 17
+    nh = sc["owner"] == "national_highways"
+    assert nh.any() and not sc.loc[nh, "scored"].any()
+    assert set(sc["load_confidence"]) <= {"high", "medium", "low"}
+    assert sc["scored"].sum() > 0.9 * (~nh).sum()

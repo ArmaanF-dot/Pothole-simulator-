@@ -30,6 +30,8 @@ LICENCES = {
 
 
 def _clean(v):
+    if v is pd.NA or v is pd.NaT:
+        return None
     if isinstance(v, (np.floating, float)):
         return None if not np.isfinite(v) else float(v)
     if isinstance(v, (np.integer,)):
@@ -56,8 +58,8 @@ class Service:
         self.now = now
         self.state_dir = I.resolve(self.cfg, "state_dir", self.root)
         self.seg, self.seg_meta = I.load_segments(self.cfg, self.root)
-        self.risk, self.risk_meta = I.load_risk(self.cfg, self.root)
-        self.lights, self.lights_meta = I.load_lights(self.cfg, self.root)
+        self.risk, self.risk_meta = I.load_risk(self.cfg, self.root, seg=self.seg)
+        self.lights, self.lights_meta = I.load_lights(self.cfg, self.root, seg=self.seg)
         self.fms = I.load_fms(self.cfg, self.root)
         self.forecast_meta = I.load_forecast_meta(self.cfg, self.root)
         self.synthetic_meta = I.synthetic_meta(self.cfg, self.root)
@@ -124,14 +126,30 @@ class Service:
                         + ("Segments or risk are MOCK until lane A and B outputs are merged." if self.inputs_mock else "")}
 
     # --- reads ---------------------------------------------------------------------------------
-    SEG_COLS = ["segment_id", "name", "ward", "highway", "owner", "length_m", "lat", "lon", "urgency", "band", "wear_pct",
-                "p7", "p30", "p30_w0", "p30_w1", "p30_w2", "p30_w3", "p30_peak", "p30_rise", "urgency_peak", "band_peak", "consequence",
-                "consequence_text", "treatment", "treatment_label", "treatment_cost_gbp", "reactive_cost_avoided_gbp",
-                "avoided_per_gbp", "reason_1", "reason_2", "reason_3", "esal_day", "traffic_note", "bus_stop",
-                "in_flood_area", "status", "confirmed_open", "cracking", "weather_source", "model_version", "as_of",
-                "labels_synthetic", "wear_synthetic", "inputs_mock", "input_source"]
+    # contract section 10: segments.parquet fields + latest risk row + urgency, band, load_confidence
+    SEG_FIELDS = ["segment_id", "city", "osm_way_id", "name", "ref", "highway", "is_main_road", "ward", "length_m", "lat",
+                  "lon", "bus_stop", "bus_routes", "junction", "in_flood_area", "owner"]
+    RISK_FIELDS = ["p7", "p30", "wear", "reason_1", "reason_2", "reason_3", "model_version", "trained_on",
+                   "uses_synthetic", "weather_data_date", "uses_forecast"]
+    EXTRA_FIELDS = ["urgency", "band", "load_confidence", "status", "treatment", "treatment_label", "open_fms_report",
+                    "confirmed_open", "inputs_mock"]
+    MAP_FIELDS = ["segment_id", "name", "ref", "ward", "highway", "owner", "urgency", "band", "status", "confirmed_open",
+                  "load_confidence"]
+    DETAIL_FIELDS = (SEG_FIELDS + RISK_FIELDS + EXTRA_FIELDS +
+                     ["wear_pct", "p30_w0", "p30_w1", "p30_w2", "p30_w3", "p30_peak", "p30_rise", "urgency_peak", "band_peak",
+                      "consequence", "consequence_text", "treatment_cost_gbp", "reactive_cost_avoided_gbp",
+                      "avoided_per_gbp", "esal_day", "traffic_note", "cracking", "weather_source", "as_of",
+                      "labels_synthetic", "wear_synthetic", "input_source"])
+    SEG_COLS = DETAIL_FIELDS  # flat JSON (?format=json)
 
-    def segments(self, ward=None, band=None, scenario=None, geojson=False, limit=None) -> dict:
+    def _geometry(self, sid: str) -> dict:
+        if not hasattr(self, "_geom"):
+            self._geom = {s: [[round(x, 6), round(y, 6)] for x, y in I._coords(g)]
+                          for s, g in zip(self.seg["segment_id"], self.seg["geometry"])}
+        return {"type": "LineString", "coordinates": self._geom.get(sid, [])}
+
+    def segments(self, ward=None, band=None, scenario=None, geojson=True, limit=None, full=False) -> dict:
+        """GeoJSON by default (contract). The map uses lean properties; full=True gives every contract field."""
         s = self.scored_for(scenario)
         if ward:
             s = s[s["ward"] == ward]
@@ -142,24 +160,29 @@ class Service:
         meta = {"count": len(s), "as_of": self.risk_meta.get("as_of"), "scenario": scenario, **self.badges()}
         if not geojson:
             return {**meta, "segments": records(s, self.SEG_COLS)}
-        if not hasattr(self, "_geom"):
-            self._geom = {sid: [[round(x, 6), round(y, 6)] for x, y in I._coords(g)]
-                          for sid, g in zip(self.seg["segment_id"], self.seg["geometry"])}
-        feats = [{"type": "Feature", "properties": r, "geometry": {"type": "LineString", "coordinates": self._geom[r["segment_id"]]}}
-                 for r in records(s, ["segment_id", "name", "ward", "highway", "urgency", "band", "status", "confirmed_open"])]
+        cols = self.SEG_FIELDS + self.RISK_FIELDS + self.EXTRA_FIELDS if full else self.MAP_FIELDS
+        feats = [{"type": "Feature", "properties": r, "geometry": self._geometry(r["segment_id"])} for r in records(s, cols)]
         return {"type": "FeatureCollection", "features": feats, "meta": meta}
 
     def segment(self, sid: str, scenario=None) -> dict | None:
+        """Contract: one Feature plus risk_weeks, load and reports. Properties are also copied to the
+        top level so older callers keep working."""
         s = self.scored_for(scenario)
         r = s[s["segment_id"] == sid]
         if r.empty:
             return None
-        out = records(r, self.SEG_COLS)[0]
-        out["reasons"] = [x for x in [out.get("reason_1"), out.get("reason_2"), out.get("reason_3")] if x]
-        out["data_dates"] = self.data_dates()
-        out["reports"] = [q for q in self.queue if q.get("segment_id") == sid]
-        out["outcomes"] = [o for o in self.outcomes if o["segment_id"] == sid]
-        out["badges"] = self.badges()
+        props = records(r, self.DETAIL_FIELDS)[0]
+        props["reasons"] = [x for x in [props.get("reason_1"), props.get("reason_2"), props.get("reason_3")] if x]
+        row = r.iloc[0]
+        weeks = [{"week": k, "week_start": str((pd.Timestamp(row["week_start"]) + pd.Timedelta(weeks=k)).date())
+                  if pd.notna(row.get("week_start")) else None, "p30": _clean(row.get(f"p30_w{k}"))} for k in range(4)]
+        load = {k: _clean(row.get(k)) for k in ["esal_day", "hgv_bus_aadf", "load_source", "load_confidence", "count_year"]}
+        load["note"] = props.get("traffic_note")
+        out = {"type": "Feature", "geometry": self._geometry(sid), "properties": props, **props,
+               "risk_weeks": weeks, "load": load,
+               "reports": [q for q in self.queue if q.get("segment_id") == sid],
+               "outcomes": [o for o in self.outcomes if o["segment_id"] == sid],
+               "data_dates": self.data_dates(), "badges": self.badges()}
         return out
 
     def locate(self, lat: float, lon: float) -> dict:
@@ -175,8 +198,8 @@ class Service:
 
     def plan(self, ward=None, scenario=None, forecast_as_of=None) -> dict:
         s = self.scored_for(scenario)
-        p = P.build_plan(s, self.cfg, ward=ward)
         f = self.freshness(forecast_as_of)
+        p = P.build_plan(s, self.cfg, ward=ward, data_dates=P.data_dates(self.seg_meta, self.risk_meta, f))
         method = (self._scenarios[scenario]["scenario_method"].iloc[0] if scenario else None)
         movers = []
         if scenario:
@@ -189,23 +212,28 @@ class Service:
                 "freshness": f, "provisional": f["provisional"], "count": len(p), "costs": self.cfg["costs"],
                 **self.badges(), "rows": records(p, P.PLAN_COLS)}
 
-    def lights_view(self, ward=None, due=None, dark=None, limit=500) -> dict:
+    def lights_view(self, ward=None, due=None, dark=None, limit=500, due_days: int | None = None) -> dict:
         L = self.lights.merge(self.seg[["segment_id", "ward", "name"]], on="segment_id", how="left")
         if ward:
             L = L[L["ward"] == ward]
-        due_n, dark_n = int(L["due_90d"].sum()), int(L["currently_dark"].sum())
-        if due:
-            L = L[L["due_90d"] | L["replacement_overdue"]]
+        as_of = pd.Timestamp(str(L["as_of"].iloc[0])) if len(L) and L["as_of"].notna().any() else pd.Timestamp.now()
+        days = due_days or 90
+        L = L.assign(due=pd.to_datetime(L["replace_by"], errors="coerce") <= as_of + pd.Timedelta(days=days))
+        due_n, dark_n = int(L["due"].sum()), int(L["currently_dark"].sum())
+        if due or due_days:
+            L = L[L["due"] | L["replacement_overdue"]]
         if dark:
             L = L[L["currently_dark"]]
         L = L.sort_values("p_fail_90d", ascending=False).head(limit)
         open_lights = [q for q in self.queue if q["category"] == "streetlight" and q["status"] in ("pending_approval", "approved")]
-        return {"count_due_90d": due_n, "count_currently_dark": dark_n, "as_of": str(self.lights["as_of"].iloc[0]) if len(self.lights) else None,
-                "synthetic": True, "open_streetlight_reports": open_lights,
+        return {"due_days": days, "count_due": due_n, "count_due_90d": due_n, "count_currently_dark": dark_n,
+                "as_of": self.lights_meta.get("as_of"), "synthetic": True, "kind": self.lights_meta["kind"],
+                "open_streetlight_reports": open_lights,
                 "official_report_url": self.cfg["coverage"]["official_streetlight_url"],
-                "lamps": records(L, ["lamp_id", "segment_id", "name", "ward", "lat", "lon", "unit_type", "unit_install_date",
-                                     "burn_hours", "p_fail_90d", "predicted_replacement_date", "replacement_overdue",
-                                     "due_90d", "currently_dark", "dark_since", "source"])}
+                # contract section 8 fields first, then name/ward for the page
+                "lamps": records(L, ["lamp_id", "segment_id", "lat", "lon", "lamp_type", "p_fail_90d", "replace_by",
+                                     "currently_dark", "dark_source", "uses_synthetic", "name", "ward",
+                                     "replacement_overdue", "due", "dark_since"])}
 
     def open_reports(self) -> dict:
         """Currently open real FixMyStreet pothole reports: shown at urgency 100 with their date."""
@@ -223,35 +251,44 @@ class Service:
                                                                                      "status", "lat", "lon", "title"])
 
     def sources(self) -> list[dict]:
-        out = []
-        for m, lic in [(self.seg_meta, LICENCES["segments"]), (self.risk_meta, LICENCES["risk"]),
-                       (self.lights_meta, LICENCES["lights"])]:
-            out.append({"dataset": m["name"], "path": m["path"], "kind": m["kind"], "retrieved_at": m.get("retrieved_at"),
-                        "data_date": m.get("as_of"), "licence": lic,
-                        "synthetic": m["name"] in ("risk", "lights") or m["kind"] == "mock",
-                        "label": "MOCK" if m["kind"] == "mock" else ("SYNTHETIC" if m["name"] == "lights" else
-                                                                       "cached, retrieved " + str(m.get("retrieved_at"))[:10])})
+        """Contract section 10: [{name, used_for, licence, retrieved_at, data_date, is_synthetic}] plus
+        `label` (what the footer prints), `kind` and `path`."""
+        def src(name, used_for, licence, retrieved_at, data_date, is_synthetic, label, kind, path=None):
+            return {"name": name, "used_for": used_for, "licence": licence, "retrieved_at": retrieved_at,
+                    "data_date": data_date, "is_synthetic": bool(is_synthetic), "label": label, "kind": kind, "path": path}
+
+        cached = lambda m: "cached, retrieved " + str(m.get("retrieved_at"))[:10]
+        sm, rm, lm = self.seg_meta, self.risk_meta, self.lights_meta
+        out = [src("segments", "road map, wards, bus stops and routes, flood areas", LICENCES["segments"],
+                   sm.get("retrieved_at"), None, sm["kind"] == "mock", "MOCK" if sm["kind"] == "mock" else cached(sm),
+                   sm["kind"], sm["path"])]
+        if sm.get("load_path"):
+            out.append(src("traffic_load", "HGV and bus load (esal_day) per segment", "DfT road traffic statistics, OGL",
+                           sm.get("retrieved_at"), None, False, cached(sm) + "; count year shown per segment", "real",
+                           sm["load_path"]))
+        out.append(src("risk", "pothole risk P7/P30, wear and reasons", LICENCES["risk"], rm.get("retrieved_at"),
+                       rm.get("as_of"), True, "MOCK" if rm["kind"] == "mock" else "SYNTHETIC labels", rm["kind"], rm["path"]))
+        out.append(src("lights", "lamps due for replacement and currently dark", LICENCES["lights"], lm.get("retrieved_at"),
+                       lm.get("as_of"), True, "MOCK" if lm["kind"] == "mock" else "SYNTHETIC", lm["kind"], lm["path"]))
         if len(self.fms):
-            out.append({"dataset": "fixmystreet_reports", "path": self.cfg["paths"]["fms_csv"], "kind": "real",
-                        "retrieved_at": self.fms["retrieved_at"].iloc[0], "data_date": str(self.fms["requested"].max().date()),
-                        "licence": LICENCES["fixmystreet"], "synthetic": False,
-                        "label": "cached, retrieved " + str(self.fms["retrieved_at"].iloc[0])[:10]})
+            out.append(src("fixmystreet_reports", "open pothole layer and report triage", LICENCES["fixmystreet"],
+                           self.fms["retrieved_at"].iloc[0], str(self.fms["requested"].max().date()), False,
+                           "cached, retrieved " + str(self.fms["retrieved_at"].iloc[0])[:10], "real", self.cfg["paths"]["fms_csv"]))
         if self.synthetic_meta:
-            out.append({"dataset": "synthetic_council_data", "path": self.cfg["paths"]["synthetic_dir"], "kind": "synthetic",
-                        "retrieved_at": None, "data_date": self.synthetic_meta.get("as_of"), "licence": LICENCES["synthetic"],
-                        "synthetic": True, "label": "SYNTHETIC"})
+            out.append(src("synthetic_council_data", "repair log, resurfacing, lighting register, crew outcomes",
+                           LICENCES["synthetic"], None, self.synthetic_meta.get("as_of"), True, "SYNTHETIC", "synthetic",
+                           self.cfg["paths"]["synthetic_dir"]))
         fr = self.freshness()
-        out.append({"dataset": "weather_forecast", "path": self.forecast_meta.get("path"), "kind": "real" if self.forecast_meta["available"] else "missing",
-                    "retrieved_at": fr["forecast_retrieved_at"], "data_date": None, "licence": LICENCES["forecast"],
-                    "synthetic": False, "label": fr["message"]})
-        out.append({"dataset": "repair_costs", "path": "roadsense/prevent/prevent.yaml", "kind": "published", "retrieved_at": None,
-                    "data_date": "2025", "licence": LICENCES["costs"], "synthetic": False,
-                    "label": "treatment £/m² are ASSUMPTIONS"})
-        # lane A writes a manifest of every real source (DfT, BODS, EA, Open-Meteo, ONS) once merged
+        out.append(src("weather_forecast", "forward risk (weeks 1-3)", LICENCES["forecast"], fr["forecast_retrieved_at"], None,
+                       False, fr["message"], "real" if self.forecast_meta["available"] else "missing",
+                       self.forecast_meta.get("path")))
+        out.append(src("repair_costs", "cost per £ ranking", LICENCES["costs"], None, "2025", False,
+                       "treatment £/m² are ASSUMPTIONS", "published", "roadsense/prevent/prevent.yaml"))
+        # lane A may write a manifest of every real source (DfT, BODS, EA, Open-Meteo, ONS)
         man = I.resolve(self.cfg, "processed_dir", self.root) / "sources.json"
         if man.exists():
             for s in json.loads(man.read_text(encoding="utf-8")):
-                out.append({**s, "synthetic": False})
+                out.append({"is_synthetic": False, "label": s.get("label") or cached(s), "kind": "real", **s})
         return out
 
     # --- writes --------------------------------------------------------------------------------

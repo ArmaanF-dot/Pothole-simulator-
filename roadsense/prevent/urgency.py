@@ -25,7 +25,8 @@ def consequence(seg: pd.DataFrame, cfg: dict) -> tuple[pd.Series, pd.Series]:
     w = cfg["urgency"]["consequence"]
     parts = {
         "A-road": (seg["highway"].isin(cfg["urgency"]["a_road_highways"]), w["a_road"]),
-        "bus route": (_flag(seg, "bus_route") | _flag(seg, "bus_departures") | _flag(seg, "bus_stop"), w["bus_route"]),
+        "bus route": (_flag(seg, "bus_route") | _flag(seg, "bus_routes") | _flag(seg, "bus_departures") | _flag(seg, "bus_stop"),
+                      w["bus_route"]),
         "cycle route": (_flag(seg, "cycle_route"), w["cycle_route"]),
         "within 100 m of a school or hospital": (_flag(seg, "near_school_hospital"), w["school_or_hospital_100m"]),
     }

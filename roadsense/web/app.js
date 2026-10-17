@@ -12,7 +12,7 @@ async function api(path, opts) {
 }
 const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
 const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString();
-const wx = (s) => String(s || "").split(",").map((p) => p.split(":")[1]).filter(Boolean)
+const wx = (s) => String(s || "").split(",").map((p) => p.split(":").pop()).filter(Boolean)
   .map((v, i) => (i === 0 ? "this week " : `wk ${i} `) + v.replace("climatology_10y", "climatology").replace("observed", "observed")).join(", ");
 const gbp = (x) => "£" + Number(x).toFixed(2);
 const badge = (t, cls = "") => `<span class="badge ${cls}">${t}</span>`;
@@ -48,13 +48,13 @@ async function loadPlan() {
         <div class="reasons">${esc(r.reasons)}</div>
         <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
-      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.treatment_cost_gbp, 0)}</div></td>
+      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div></td>
       <td>${fmt(r.avoided_per_gbp, 2)}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No segments in the prevention window are forecast to rise.</td></tr>`;
   document.querySelectorAll("#plan-rows tr[data-id]").forEach((tr) => tr.onclick = () => showSegment(tr.dataset.id, true));
 }
 
 async function loadMap() {
-  const gj = await api("/segments?" + qs({ format: "geojson", ward: state.ward, scenario: state.scenario }));
+  const gj = await api("/segments?" + qs({ ward: state.ward, scenario: state.scenario }));
   const src = state.map.getSource("segments");
   if (src) src.setData(gj); else {
     state.map.addSource("segments", { type: "geojson", data: gj });
@@ -95,7 +95,7 @@ async function locate(lat, lon) {
 
 async function showSegment(id, fly) {
   const s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ scenario: state.scenario }));
-  if (fly && state.map) state.map.flyTo({ center: [s.lon, s.lat], zoom: 16 });
+  if (fly && state.mapReady) state.map.flyTo({ center: [s.lon, s.lat], zoom: 16 });
   if (s.status !== "scored") return detail(`<h3>${esc(s.name)}</h3><p><b>${esc(s.status)}</b></p>`);
   const dd = s.data_dates;
   detail(`<h3>${esc(s.name)}</h3><div class="muted small">${esc(s.segment_id)} · ${esc(s.highway)} · ${esc(s.ward)}</div>
@@ -105,8 +105,9 @@ async function showSegment(id, fly) {
       <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)} ${badge("SYNTHETIC LABELS")}</div>
       <div>P30 next 4 wks</div><div>${[s.p30_w0, s.p30_w1, s.p30_w2, s.p30_w3].map((x) => fmt(x)).join(" → ")}</div>
       <div>Consequence</div><div>×${fmt(s.consequence, 2)} ${esc(s.consequence_text)}</div>
-      <div>Load</div><div>${fmt(s.esal_day, 0)} ESAL/day · ${esc(s.traffic_note)}</div>
+      <div>Load</div><div>${fmt(s.esal_day, 0)} ESAL/day · ${esc(s.traffic_note)}${s.load.count_year ? " (DfT count year " + s.load.count_year + ")" : ""}</div>
       <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}</div>
+      ${s.ref ? `<div>Road</div><div>${esc(s.ref)}${s.bus_routes ? " · " + s.bus_routes + " bus routes" : ""}</div>` : ""}
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
       <div>Data dates</div><div class="small">risk as of ${esc(dd.risk_as_of)}<br>${esc(dd.forecast.message)}<br>FixMyStreet retrieved ${esc((dd.fixmystreet_retrieved_at || "").slice(0, 10))}</div>
     </div>
@@ -166,21 +167,25 @@ async function triage(fmsId) {
 
 async function loadLights() {
   const l = await api("/lights?" + qs({ ward: state.ward, due: !$("#dark-only").checked, dark: $("#dark-only").checked, limit: 200 }));
-  $("#lights-head").innerHTML = `${l.count_due_90d} lamps due for replacement within 90 days, ${l.count_currently_dark} currently dark, as of ${esc(l.as_of)} ${badge("SYNTHETIC")}. `
+  $("#lights-head").innerHTML = `${l.count_due} lamps due for replacement within ${l.due_days} days, ${l.count_currently_dark} currently dark, as of ${esc(l.as_of)} ${badge(l.kind === "mock" ? "MOCK" : "SYNTHETIC", l.kind === "mock" ? "mock" : "")}. `
     + `Report a faulty light on the <a href="${esc(l.official_report_url)}" target="_blank" rel="noopener">council's streetlight page</a>.`;
-  $("#light-rows").innerHTML = l.lamps.map((x) => `<tr data-lat="${x.lat}" data-lon="${x.lon}"><td>${esc(x.lamp_id)}<div class="small muted">${esc(x.unit_type)}</div></td>
+  $("#light-rows").innerHTML = l.lamps.map((x) => `<tr data-lat="${x.lat}" data-lon="${x.lon}"><td>${esc(x.lamp_id)}<div class="small muted">${esc(x.lamp_type)}</div></td>
     <td>${esc(x.name)}<div class="small muted">${esc(x.ward)}</div></td><td>${fmt(x.p_fail_90d)}</td>
-    <td>${esc(x.predicted_replacement_date)}</td><td>${x.currently_dark ? "<b>dark</b> since " + esc(x.dark_since) : x.replacement_overdue ? "overdue" : ""}</td></tr>`).join("");
+    <td>${esc(x.replace_by)}</td><td>${x.currently_dark ? "<b>dark</b> (" + esc(x.dark_source || "") + ")" : x.replacement_overdue ? "overdue" : ""}</td></tr>`).join("");
   document.querySelectorAll("#light-rows tr").forEach((tr) => tr.onclick = () => state.map.flyTo({ center: [+tr.dataset.lon, +tr.dataset.lat], zoom: 17 }));
 }
 
 async function loadSources() {
   const s = await api("/sources");
-  $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span>${esc(x.dataset)}: ${esc(x.label)}${x.synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
+  $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span><span title="${esc(x.used_for)}">${esc(x.name)}</span>: ${esc(x.label)}${x.is_synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
     + `<span>Map © OpenStreetMap contributors</span>`;
 }
 
-async function refresh() { await Promise.all([loadMeta(), loadPlan(), loadMap(), loadQueue()]); state.map.resize(); }
+// the plan never waits on the map: map layers load whenever the base map is ready
+async function refresh() {
+  await Promise.all([loadMeta(), loadPlan(), loadQueue(), state.mapReady ? loadMap() : null]);
+  if (state.mapReady) state.map.resize();
+}
 
 function initMap() {
   state.map = new maplibregl.Map({ container: "map", center: [-1.40, 50.91], zoom: 12, style: {
@@ -195,13 +200,13 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   if (b.dataset.tab === "lights") loadLights();
 });
 $("#ward").onchange = (e) => { state.ward = e.target.value; refresh(); if (!$("#tab-lights").classList.contains("hidden")) loadLights(); };
-$("#scenario").onchange = async (e) => { state.scenario = e.target.value; $("#plan-head").textContent = "Re-scoring…"; await Promise.all([loadPlan(), loadMap()]); };
+$("#scenario").onchange = async (e) => { state.scenario = e.target.value; $("#plan-head").textContent = "Re-scoring…"; await Promise.all([loadPlan(), state.mapReady ? loadMap() : null]); };
 $("#dark-only").onchange = loadLights;
 $("#triage-form").onsubmit = (e) => { e.preventDefault(); triage($("#fms-pick").value); };
 $("#dup-btn").onclick = () => triage(state.lastFms || $("#fms-pick").value);
 
 (async () => {
   await loadMeta();
-  await initMap();
+  initMap().then(async () => { state.mapReady = true; await loadMap(); state.map.resize(); });
   await Promise.all([refresh(), loadFms(), loadSources()]);
 })().catch((e) => { $("#stale").textContent = "Could not reach the RoadSense API: " + e.message; $("#stale").classList.remove("hidden"); });

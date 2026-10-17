@@ -34,7 +34,7 @@ def mock_world(cfg: dict | None = None, n_ways: int = 12, per_way: int = 10, see
                 "junction": k in (0, per_way - 1), "in_flood_area": bool(rng.random() < 0.1),
                 "owner": "national_highways" if hw == "motorway" else "council",
                 "esal_day": float(esal * rng.lognormal(0, 0.4)),
-                "esal_confidence": "count" if hw in ("primary", "trunk") and k == 0 else "modelled",
+                "load_source": "count" if hw in ("primary", "trunk") and k == 0 else "class_median",
                 "input_source": "mock",
             })
     seg = pd.DataFrame(rows)
@@ -67,3 +67,70 @@ def mock_world(cfg: dict | None = None, n_ways: int = 12, per_way: int = 10, see
                 "is_synthetic": True, "source": "mock:lane_c", "as_of": as_of,
             })
     return {"segments": seg, "risk": risk, "lights": pd.DataFrame(lamps)}
+
+
+MOCK_REASONS = {
+    "load": lambda r: f"heavy axle load ({r['esal_day']:,.0f} ESAL/day)",
+    "bus": lambda r: f"{int(r['bus_routes'])} bus routes" if r["bus_routes"] else "bus stop on this segment",
+    "flood": lambda r: "inside an Environment Agency flood area",
+    "junction": lambda r: "junction (turning and braking loads)",
+    "age": lambda r: f"{r['age']:.0f} years since resurfacing (synthetic)",
+}
+
+
+def mock_risk(seg: pd.DataFrame, cfg: dict | None = None, as_of: str = "2026-10-12", seed: int = 2026) -> pd.DataFrame:
+    """MOCK risk on real segments, in the contract's section 7 columns (one row per segment per week).
+
+    Only so the page can run on lane A's real map before lane B re-runs on it. Scores rise with real
+    load, bus routes, flood areas and junctions plus noise; they are not model output.
+    """
+    rng = np.random.default_rng(seed)
+    s = seg[(seg["owner"] != "national_highways") & (seg["highway"] != "motorway")].reset_index(drop=True)
+    n = len(s)
+    esal = s["esal_day"].fillna(s["esal_day"].median() if s["esal_day"].notna().any() else 10).astype(float)
+    bus = s.get("bus_routes", pd.Series(0, index=s.index)).fillna(0).astype(float)
+    z = (0.6 * np.log1p(esal) + 0.25 * np.minimum(bus, 6) + 0.4 * s["in_flood_area"].astype(float)
+         + 0.3 * s["junction"].astype(float) + rng.normal(0, 0.6, n))
+    p30 = np.clip(0.002 * np.exp(z), 0.0005, 0.6)
+    age = rng.uniform(0, 30, n)
+    wear = np.clip(100 * (1 - np.exp(-(age / 22) ** 2.2)), 0, 100).round(1)
+    trend = rng.normal(0.15, 0.2, n)
+    rows = s.assign(esal_day=esal, bus_routes=bus, age=age)
+    reasons = []
+    for r in rows.to_dict("records"):
+        keys = sorted([("load", np.log1p(r["esal_day"])), ("bus", r["bus_routes"] + 3 * r["bus_stop"]),
+                       ("flood", 4 * r["in_flood_area"]), ("junction", 2 * r["junction"]), ("age", r["age"] / 6)],
+                      key=lambda t: -t[1])
+        reasons.append([MOCK_REASONS[k](r) for k, v in keys[:3] if v > 0])
+    out = []
+    for k in range(4):
+        week = (pd.Timestamp(as_of) + pd.Timedelta(weeks=k)).date().isoformat()
+        pk = np.clip(p30 * (1 + trend * k / 3), 0.0002, 0.9)
+        out.append(pd.DataFrame({
+            "segment_id": s["segment_id"], "ward": s["ward"], "week_start": week, "horizon_week": k,
+            "p7": (pk * 0.3).round(5), "p30": pk.round(5), "wear": wear,
+            "reason_1": [r[0] if len(r) > 0 else None for r in reasons],
+            "reason_2": [r[1] if len(r) > 1 else None for r in reasons],
+            "reason_3": [r[2] if len(r) > 2 else None for r in reasons],
+            "weather_source": "observed" if k == 0 else "climatology_10y", "uses_forecast": k > 0,
+            "weather_data_date": f"{as_of}T00:00", "model_version": "mock@lane_c", "trained_on": "mock",
+            "uses_synthetic": True, "inputs_mock": True, "as_of": as_of}))
+    return pd.concat(out, ignore_index=True)
+
+
+def mock_lights(seg: pd.DataFrame, as_of: str = "2026-10-12", seed: int = 2026, every: int = 4) -> pd.DataFrame:
+    """MOCK lamps on real segments (one at every `every`-th segment midpoint), contract section 8 columns."""
+    rng = np.random.default_rng(seed + 1)
+    s = seg[(seg["owner"] != "national_highways") & (seg["highway"] != "motorway")].iloc[::every].reset_index(drop=True)
+    n = len(s)
+    legacy = rng.random(n) < 0.1
+    p = np.clip(rng.beta(1, 25, n) + 0.08 * legacy, 0, 1)
+    replace_by = pd.Timestamp(as_of) + pd.to_timedelta((rng.uniform(-60, 3000, n) * (1 - p)).astype(int), unit="D")
+    dark = rng.random(n) < 0.01
+    return pd.DataFrame({
+        "lamp_id": [f"ML{i:05d}" for i in range(n)], "segment_id": s["segment_id"], "lat": s["lat"], "lon": s["lon"],
+        "lamp_type": np.where(legacy, "legacy", "LED"), "p_fail_90d": p.round(4),
+        "replace_by": replace_by.strftime("%Y-%m-%d"), "replacement_overdue": replace_by < pd.Timestamp(as_of),
+        "due_90d": replace_by <= pd.Timestamp(as_of) + pd.Timedelta(days=90), "currently_dark": dark,
+        "dark_source": np.where(dark, "synthetic", None), "dark_since": None, "uses_synthetic": True,
+        "is_synthetic": True, "source": "mock:lane_c", "as_of": as_of})

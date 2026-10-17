@@ -2,8 +2,12 @@
 
 Lane C owns `roadsense/prevent/`, `roadsense/agent/`, `roadsense/api/`, `roadsense/web/` and `reports/cost.md`.
 Shared files change only at a merge, so what lane C needs from them is listed here.
-`schemas.md` was not on `main` when lane C started; lane C reads the shapes in
-`data/synthetic/SCHEMAS_lane_b.md` (lane B's draft) and the columns below.
+Lane C follows `schemas.md` and `docs/contract_outputs.md` sections 7-10 on `lane-a-data` (draft, 17 Oct).
+Until the merge, `roadsense/prevent/mock_data/` holds a copy of lane A's real Southampton
+`segments.parquet` and `load.parquet` (lane-a-data @ 2a2bbac). **Delete that folder at the merge**:
+the loader then reads `data/processed/`. Risk and lights stay MOCK (badged) until lane B re-runs on
+the real segment ids; the loader switches to lane B's files automatically when at least half their
+segment ids match.
 
 ## Makefile targets
 ```make
