@@ -227,22 +227,20 @@ Southampton, frozen 2026 check (Jan to Oct): model 15% (4%-28%) vs last-year bas
 <!-- real-label-eval:end -->
 
 <!-- eval-ci:start -->
-## Live model: bootstrap ranges, 2026 check and top features
+## Held-out ranges by ward, 2026 check and top features per city
 
-_Generated 2026-10-17T21:15:21+00:00 by `python -m roadsense.models.eval_ci`. Scores the real-label model exactly as saved for the live plan (`data/models/real_risk_model.txt`), with no retraining._
+_Generated 2026-10-17T21:28:57+00:00 by `python -m roadsense.models.eval_ci`._
 
 Metric: share of a test year's FixMyStreet reports that fall on the top 10% of road length, averaged over the test years. Baseline: rank by last year's reports. Ranges: paired cluster bootstrap over **wards** (1,000 resamples, seed 2026); reports cluster in space, so whole wards are resampled rather than single roads or weeks, which would understate the noise.
 
-**Caveat:** the live model was fitted on every usable year, including these test years, so the first table is an in-sample score and reads higher than a true hold-out. The held-out results are the real-label tables above; the 2026 check below is out of sample.
-
-### Test years (live model)
+### Test years (held out: model fitted on the training years only)
 
 | City | Model | Baseline (last year's reports) | Model minus baseline | Model ahead | Reports / wards |
 |---|---|---|---|---|---|
-| Southampton 2018-19 | 64.8% (56.3% to 74.6%) | 33.7% (23.1% to 40.1%) | 31.2% (27.2% to 40.3%) | 100% | 381 / 17 |
-| Brighton 2023-25 | 50.7% (45.0% to 55.0%) | 21.7% (17.9% to 26.6%) | 29.0% (23.3% to 32.0%) | 100% | 802 / 23 |
+| Southampton 2018-19 | 41.6% (31.2% to 52.6%) | 33.7% (23.1% to 40.1%) | 7.9% (1.1% to 17.0%) | 99% | 381 / 17 |
+| Brighton 2023-25 | 31.2% (26.4% to 35.6%) | 21.7% (17.9% to 26.6%) | 9.5% (4.4% to 12.8%) | 100% | 802 / 23 |
 
-### Frozen 2026 check (January to October, out of sample)
+### Frozen 2026 check (January to October, out of sample: live plan model, fitted on years up to 2025)
 
 | City | Reports | Model | Baseline | Model minus baseline | Model ahead |
 |---|---|---|---|---|---|
@@ -252,12 +250,24 @@ Metric: share of a test year's FixMyStreet reports that fall on the top 10% of r
 - Southampton: only 33 reports in January to October 2026, too few for this result to mean anything (model 15% vs baseline 12%).
 - Brighton: only 30 reports in January to October 2026, too few for this result to mean anything (model 27% vs baseline 17%).
 
-### Top 5 features (mean absolute SHAP over both cities' test rows)
+### Top 5 features within each city (held-out model, mean absolute SHAP on that city's test rows)
 
-1. **Length of the road segment (longer pieces have more surface to fail)** (`length_m`, 24% of the model's total attribution)
-2. **Which city (reporting habits differ between cities)** (`city_code`, 15% of the model's total attribution)
-3. **Frost hours in the area last year** (`wx_frost_hours`, 12% of the model's total attribution)
-4. **Potholes reported on the neighbouring roads last year** (`rep_nb_prev1`, 8% of the model's total attribution)
-5. **Number of bus routes using the road** (`bus_routes`, 7% of the model's total attribution)
+**Southampton**
+
+1. Length of the road segment (longer pieces have more surface to fail) (`length_m`, 23% of the attribution)
+2. Which city (reporting habits differ between cities) (`city_code`, 22% of the attribution)
+3. How wet the area was last year (`wx_rain_30d_mean`, 17% of the attribution)
+4. Potholes reported on the neighbouring roads last year (`rep_nb_prev1`, 7% of the attribution)
+5. Hot days in the area last year (`wx_hot_days`, 4% of the attribution)
+
+**Brighton**
+
+1. Length of the road segment (longer pieces have more surface to fail) (`length_m`, 27% of the attribution)
+2. How wet the area was last year (`wx_rain_30d_mean`, 18% of the attribution)
+3. Potholes reported on the neighbouring roads last year (`rep_nb_prev1`, 9% of the attribution)
+4. Number of bus routes using the road (`bus_routes`, 7% of the attribution)
+5. Freeze-thaw cycles in the area last year (`wx_freeze_thaw`, 7% of the attribution)
+
+City-level features (the city itself, and last year's weather summaries such as rain, hot days, freeze-thaw and frost hours, which take only 2 to 6 distinct values across a city's wards) move every road in a city or district up or down together, so they barely change the ranking within a city.
 
 <!-- eval-ci:end -->

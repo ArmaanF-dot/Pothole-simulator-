@@ -1,17 +1,15 @@
-"""Uncertainty for the LIVE real-label model (the one that ranks the plan), without retraining.
+"""Bootstrap ranges on the HELD-OUT real-label evaluation, per-city feature importance, and the 2026 check.
 
 Rerun:  python -m roadsense.models.eval_ci
-Reads data/models/real_risk_model.txt (+ .json) as saved by roadsense.models.plan_risk and lane A's
-data/processed files; writes the "eval-ci" section of reports/risk_eval.md and
-data/models/eval_ci.json. Touches no risk, plan or app output.
+Test years: the evaluation model is fitted on the training years only, exactly as in
+roadsense.models.real_risk.run (same rows, same seed), so Southampton 2018-19 and Brighton 2023-25
+are true hold-outs. 2026: the live plan model (data/models/real_risk_model.txt, fitted on every usable
+year up to 2025) is scored without retraining; 2026 is outside its training data. Writes the "eval-ci"
+section of reports/risk_eval.md and data/models/eval_ci.json. Touches no risk, plan or app output.
 
 Resampling unit: wards (cluster bootstrap). Reports and risk cluster in space (neighbouring segments
 share traffic, history and who reports), so resampling single segments or weeks would treat
 correlated roads as independent and understate the noise; resampling whole wards keeps that.
-
-Caveat (stated in the report): the live model was fitted on every usable year, including the
-Southampton 2018-19 and Brighton 2023-25 test years, so on those years it is an in-sample score.
-The held-out numbers are the "Real-label evaluation" tables above. 2026 is out of sample.
 """
 from __future__ import annotations
 
@@ -99,16 +97,14 @@ def ward_bootstrap(df: pd.DataFrame, scores: dict, n: int = N_BOOT, seed: int = 
                   "resamples": n, "seed": seed}}
 
 
-def global_importance(booster, meta, rows: pd.DataFrame, k: int = 5) -> list[dict]:
-    """Mean absolute SHAP value (LightGBM exact tree contributions) per feature."""
-    X = rows[meta["features"]].copy()
-    X["city_code"] = pd.Categorical(rows["city"], categories=meta["city_categories"])
-    contrib = booster.predict(X, pred_contrib=True)[:, :-1]
+def city_importance(model, rows: pd.DataFrame, k: int = 5) -> list[dict]:
+    """Mean absolute SHAP value (LightGBM exact tree contributions) per feature on one city's test rows."""
+    feats = model.feature_names_used_
+    contrib = model.booster_.predict(rows[feats], pred_contrib=True)[:, :-1]
     imp = np.abs(contrib).mean(axis=0)
     share = imp / imp.sum()
     order = np.argsort(-imp)[:k]
-    return [{"feature": meta["features"][j], "share": float(share[j]), "plain": PLAIN.get(meta["features"][j], meta["features"][j])}
-            for j in order]
+    return [{"feature": feats[j], "share": float(share[j]), "plain": PLAIN.get(feats[j], feats[j])} for j in order]
 
 
 def _pct(x, dp=0):
@@ -116,17 +112,13 @@ def _pct(x, dp=0):
 
 
 def section(res: dict) -> str:
-    L = [SECTION_START, "## Live model: bootstrap ranges, 2026 check and top features", "",
-         f"_Generated {res['generated_at']} by `python -m roadsense.models.eval_ci`. Scores the real-label model exactly as "
-         "saved for the live plan (`data/models/real_risk_model.txt`), with no retraining._", "",
+    L = [SECTION_START, "## Held-out ranges by ward, 2026 check and top features per city", "",
+         f"_Generated {res['generated_at']} by `python -m roadsense.models.eval_ci`._", "",
          "Metric: share of a test year's FixMyStreet reports that fall on the top 10% of road length, averaged over the test "
          "years. Baseline: rank by last year's reports. Ranges: paired cluster bootstrap over **wards** "
          f"({N_BOOT:,} resamples, seed {SEED}); reports cluster in space, so whole wards are resampled rather than single "
          "roads or weeks, which would understate the noise.", "",
-         "**Caveat:** the live model was fitted on every usable year, including these test years, so the first table is an "
-         "in-sample score and reads higher than a true hold-out. The held-out results are the real-label tables above; "
-         "the 2026 check below is out of sample.", "",
-         "### Test years (live model)", "",
+         "### Test years (held out: model fitted on the training years only)", "",
          "| City | Model | Baseline (last year's reports) | Model minus baseline | Model ahead | Reports / wards |",
          "|---|---|---|---|---|---|"]
     for c, r in res["test"].items():
@@ -135,7 +127,7 @@ def section(res: dict) -> str:
                  f"({_pct(r['baseline']['ci95'][0], 1)} to {_pct(r['baseline']['ci95'][1], 1)}) | {_pct(r['diff']['point'], 1)} "
                  f"({_pct(r['diff']['ci95'][0], 1)} to {_pct(r['diff']['ci95'][1], 1)}) | {_pct(r['share_model_beats_baseline'])} "
                  f"| {r['n']['reports']} / {r['n']['wards']} |")
-    L += ["", "### Frozen 2026 check (January to October, out of sample)", "",
+    L += ["", "### Frozen 2026 check (January to October, out of sample: live plan model, fitted on years up to 2025)", "",
           "| City | Reports | Model | Baseline | Model minus baseline | Model ahead |", "|---|---|---|---|---|---|"]
     for c, r in res["frozen_2026"].items():
         L.append(f"| {c} | {r['n']['reports']} | {_pct(r['model']['point'], 1)} ({_pct(r['model']['ci95'][0], 1)} to "
@@ -143,10 +135,16 @@ def section(res: dict) -> str:
                  f"to {_pct(r['baseline']['ci95'][1], 1)}) | {_pct(r['diff']['point'], 1)} ({_pct(r['diff']['ci95'][0], 1)} to "
                  f"{_pct(r['diff']['ci95'][1], 1)}) | {_pct(r['share_model_beats_baseline'])} |")
     L += [""] + [f"- {s}" for s in res["frozen_sentences"]] + ["",
-          "### Top 5 features (mean absolute SHAP over both cities' test rows)", ""]
-    for i, f in enumerate(res["top_features"], start=1):
-        L.append(f"{i}. **{f['plain']}** (`{f['feature']}`, {_pct(f['share'])} of the model's total attribution)")
-    L += ["", SECTION_END]
+          "### Top 5 features within each city (held-out model, mean absolute SHAP on that city's test rows)", ""]
+    for c, feats in res["top_features"].items():
+        L += [f"**{c}**", ""]
+        for i, f in enumerate(feats, start=1):
+            L.append(f"{i}. {f['plain']} (`{f['feature']}`, {_pct(f['share'])} of the attribution)")
+        L.append("")
+    L += ["City-level features (the city itself, and last year's weather summaries such as rain, hot days, freeze-thaw "
+          "and frost hours, which take only 2 to 6 distinct values across a city's wards) move every road in a city or "
+          "district up or down together, so they barely change the ranking within a city.",
+          "", SECTION_END]
     return "\n".join(L)
 
 
@@ -179,24 +177,27 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
         inp["reports"], seg, cfg_a, cfg_a.get("labels", {}).get("snap_m", 25))
     table = rr.build_table(seg, labels, wx=inp.get("wx"))
     table = table[table["rep_prev1"].notna()].reset_index(drop=True)
+    held = rr.fit(table[table["split"] == "train"], cfg)        # exactly as real_risk.run: training years only
+    table["held_score"] = held.predict_proba(table[held.feature_names_used_])[:, 1]
     booster, meta = load_live_model(root)
     table["live_score"] = score_rows(booster, meta, table)
-    res = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "test": {}, "frozen_2026": {}}
+    res = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "test": {}, "frozen_2026": {},
+           "top_features": {}}
     for city in ["Southampton", "Brighton"]:
-        for split, key in [("test", "test"), ("frozen_2026", "frozen_2026")]:
+        for split, key, col in [("test", "test", "held_score"), ("frozen_2026", "frozen_2026", "live_score")]:
             df = table[(table["city"] == city) & (table["split"] == split)].reset_index(drop=True)
             if len(df) and df["n_reports"].sum():
-                res[key][city] = ward_bootstrap(df, {"model": df["live_score"].values,
-                                                     "baseline": df["rep_prev1"].fillna(0).values})
+                res[key][city] = ward_bootstrap(df, {"model": df[col].values, "baseline": df["rep_prev1"].fillna(0).values})
+        test_rows = table[(table["city"] == city) & (table["split"] == "test")]
+        if len(test_rows):
+            res["top_features"][city] = city_importance(held, test_rows)
     res["frozen_sentences"] = [frozen_sentence(c, r) for c, r in res["frozen_2026"].items()]
-    test_rows = table[table["city"].isin(["Southampton", "Brighton"]) & (table["split"] == "test")]
-    res["top_features"] = global_importance(booster, meta, test_rows)
     rd = resolve(cfg, "reports_dir", root)
     update_report(rd / "risk_eval.md", section(res))
     (resolve(cfg, "models_dir", root) / "eval_ci.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
     if verbose:
         print(json.dumps({k: res[k] for k in ["test", "frozen_2026"]}, indent=1)[:3000])
-        print(res["frozen_sentences"], [f["feature"] for f in res["top_features"]])
+        print(res["frozen_sentences"], {c: [f["feature"] for f in v] for c, v in res["top_features"].items()})
     return res
 
 

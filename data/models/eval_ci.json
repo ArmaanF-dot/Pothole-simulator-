@@ -1,12 +1,12 @@
 {
- "generated_at": "2026-10-17T21:15:21+00:00",
+ "generated_at": "2026-10-17T21:28:57+00:00",
  "test": {
   "Southampton": {
    "model": {
-    "point": 0.6483480989294943,
+    "point": 0.4158361018826135,
     "ci95": [
-     0.5630680679249953,
-     0.7458434480367262
+     0.3119995231038749,
+     0.526302405091385
     ]
    },
    "baseline": {
@@ -17,13 +17,13 @@
     ]
    },
    "diff": {
-    "point": 0.3115079365079365,
+    "point": 0.07899593946105571,
     "ci95": [
-     0.27248927405744644,
-     0.4027697638445692
+     0.011191533178210936,
+     0.16964273399014781
     ]
    },
-   "share_model_beats_baseline": 1.0,
+   "share_model_beats_baseline": 0.99,
    "n": {
     "reports": 381,
     "segments": 8145,
@@ -38,10 +38,10 @@
   },
   "Brighton": {
    "model": {
-    "point": 0.5071262601855656,
+    "point": 0.31224690268531013,
     "ci95": [
-     0.45013559917671725,
-     0.5503162358565482
+     0.26361668376002223,
+     0.3559440473995021
     ]
    },
    "baseline": {
@@ -52,10 +52,10 @@
     ]
    },
    "diff": {
-    "point": 0.290276851036527,
+    "point": 0.09539749353627155,
     "ci95": [
-     0.23331103463620312,
-     0.32030090207237677
+     0.044207151836371354,
+     0.12800040895642809
     ]
    },
    "share_model_beats_baseline": 1.0,
@@ -143,35 +143,64 @@
    }
   }
  },
+ "top_features": {
+  "Southampton": [
+   {
+    "feature": "length_m",
+    "share": 0.23309236498199035,
+    "plain": "Length of the road segment (longer pieces have more surface to fail)"
+   },
+   {
+    "feature": "city_code",
+    "share": 0.2205264994341107,
+    "plain": "Which city (reporting habits differ between cities)"
+   },
+   {
+    "feature": "wx_rain_30d_mean",
+    "share": 0.1706644773981992,
+    "plain": "How wet the area was last year"
+   },
+   {
+    "feature": "rep_nb_prev1",
+    "share": 0.06939230549295343,
+    "plain": "Potholes reported on the neighbouring roads last year"
+   },
+   {
+    "feature": "wx_hot_days",
+    "share": 0.04080057000871354,
+    "plain": "Hot days in the area last year"
+   }
+  ],
+  "Brighton": [
+   {
+    "feature": "length_m",
+    "share": 0.26738169457701544,
+    "plain": "Length of the road segment (longer pieces have more surface to fail)"
+   },
+   {
+    "feature": "wx_rain_30d_mean",
+    "share": 0.17758749107495075,
+    "plain": "How wet the area was last year"
+   },
+   {
+    "feature": "rep_nb_prev1",
+    "share": 0.08744968164793748,
+    "plain": "Potholes reported on the neighbouring roads last year"
+   },
+   {
+    "feature": "bus_routes",
+    "share": 0.0663281148673548,
+    "plain": "Number of bus routes using the road"
+   },
+   {
+    "feature": "wx_freeze_thaw",
+    "share": 0.06624208673374596,
+    "plain": "Freeze-thaw cycles in the area last year"
+   }
+  ]
+ },
  "frozen_sentences": [
   "Southampton: only 33 reports in January to October 2026, too few for this result to mean anything (model 15% vs baseline 12%).",
   "Brighton: only 30 reports in January to October 2026, too few for this result to mean anything (model 27% vs baseline 17%)."
- ],
- "top_features": [
-  {
-   "feature": "length_m",
-   "share": 0.24318049266779274,
-   "plain": "Length of the road segment (longer pieces have more surface to fail)"
-  },
-  {
-   "feature": "city_code",
-   "share": 0.14827329709339895,
-   "plain": "Which city (reporting habits differ between cities)"
-  },
-  {
-   "feature": "wx_frost_hours",
-   "share": 0.11846989101616463,
-   "plain": "Frost hours in the area last year"
-  },
-  {
-   "feature": "rep_nb_prev1",
-   "share": 0.0806830764723916,
-   "plain": "Potholes reported on the neighbouring roads last year"
-  },
-  {
-   "feature": "bus_routes",
-   "share": 0.07295620509255828,
-   "plain": "Number of bus routes using the road"
-  }
  ]
 }
