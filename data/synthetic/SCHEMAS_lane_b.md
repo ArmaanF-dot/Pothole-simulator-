@@ -33,12 +33,13 @@ mock row carries `input_source="mock"`. Mock wards are named "Mock ward 01..17".
 The canonical columns are in `schemas.md` sections 7 and 8 (v2). **horizon_week runs 1 to 4** (weeks ahead of as_of), as agreed with lanes A and C on 17 Oct.
 | File | Notes |
 |---|---|
-| `outputs/risk_<as_of>.parquet` + `risk_latest.parquet` | 4 rows per scored segment; extra columns beyond schemas.md: weather_basis (observed/forecast/climatology_10y), inputs_mock, as_of |
+| `outputs/risk_<as_of>.parquet` + `risk_latest.parquet` | written by plan_risk: real-label ranking, 4 rows per scored segment; extra columns: history_source, weather_basis, weather_multiplier, p_report_year, lambda_year, rank_pct, inputs_mock, as_of |
+| `outputs/risk_synthetic_<as_of>.parquet` + `risk_synthetic_latest.parquet` | the synthetic-trained weekly model (same columns); feeds plan_risk's weather multiplier and lane C's what-if |
 | `outputs/lights_<as_of>.parquet` + `lights_latest.parquet` | extra columns: unit_install_date, burn_hours, replacement_overdue, is_synthetic, model_version, source, as_of |
 | `data/models/` | risk_y7.txt / risk_y30.txt (LightGBM, LF line endings), *_calibrator.pkl (isotonic), risk_eval.json, real_risk_eval.json, lights_weibull.json |
 
 ## Needed at the merge (shared files)
-- Makefile: `synthetic: python -m roadsense.synthetic`, `train: python -m roadsense.models.risk`, `lights: python -m roadsense.models.lights`. Run order: synthetic, train, then synthetic again so crew outcomes select from the model.
+- Makefile: `synthetic: python -m roadsense.synthetic`, `train: python -m roadsense.models.risk` then `python -m roadsense.models.plan_risk`, `lights: python -m roadsense.models.lights`. Run order: synthetic, risk, plan_risk, synthetic again (crew outcomes select from risk_latest), lights, real_risk (evaluation).
 - requirements.txt: numpy, pandas, pyarrow, pyyaml, scipy, shapely, lightgbm, scikit-learn, lifelines, shap, astral, tzdata, matplotlib, pytest.
 
 ## Answers to lane A's open questions (schemas.md v1)

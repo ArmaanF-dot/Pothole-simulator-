@@ -462,9 +462,10 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
     out["as_of"] = cfg["as_of"]
     od = resolve(cfg, "outputs_dir", root)
     od.mkdir(parents=True, exist_ok=True)
-    out_path = od / f"risk_{cfg['as_of']}.parquet"
+    # synthetic-trained weekly model; roadsense.models.plan_risk turns it into risk_latest (real-label ranking)
+    out_path = od / f"risk_synthetic_{cfg['as_of']}.parquet"
     out.to_parquet(out_path, index=False)
-    out.to_parquet(od / "risk_latest.parquet", index=False)
+    out.to_parquet(od / "risk_synthetic_latest.parquet", index=False)
 
     rd = resolve(cfg, "reports_dir", root)
     rd.mkdir(parents=True, exist_ok=True)
