@@ -219,12 +219,18 @@ def test_cost_report(root):
     cfg = I.load_config()
     C.write_cost_report(cfg, root)
     assert "Nothing measured yet" in (root / "reports" / "cost.md").read_text(encoding="utf-8")
-    TR.log_tokens(cfg, "triage", "m", {"prompt_tokens": 1000, "output_tokens": 100, "thoughts_tokens": 0, "total_tokens": 1100}, root=root)
-    r = C.compute(cfg, C.read_log(cfg, root))
-    exp = (1000 * 0.30 + 100 * 2.50) * 0.75 / 1e6
-    assert r["per_item"]["triage"]["gbp"] == pytest.approx(exp)
-    assert r["total_gbp_per_officer_month"] == pytest.approx(exp * 300 / 4 + 25 / 4)
-    assert "per officer per month" in C.write_cost_report(cfg, root).read_text(encoding="utf-8")
+    TR.log_tokens(cfg, "triage", "gemini-3-flash-preview",
+                  {"prompt_tokens": 1000, "output_tokens": 100, "thoughts_tokens": 0, "total_tokens": 1100, "calls": 1}, root=root)
+    TR.log_tokens(cfg, "triage", "gemini-flash-latest",
+                  {"prompt_tokens": 1000, "output_tokens": 100, "thoughts_tokens": 0, "total_tokens": 1100, "calls": 1}, root=root)
+    r = C.compute(cfg, C.read_log(cfg, root), root)
+    exp = (1000 * 0.50 + 100 * 3.00) * 0.75 / 1e6  # published gemini-3-flash-preview price
+    assert r["model"] == "gemini-3-flash-preview" and r["gbp_per_report"] == pytest.approx(exp)
+    assert r["per_model"]["gemini-flash-latest"]["gbp"] is None  # not on the pricing page: not priced
+    assert r["gbp_per_year_repairs"] == pytest.approx(exp * C.REPAIRS_PER_YEAR)
+    assert r["total_gbp_per_officer_month"] == pytest.approx(exp * C.REPAIRS_PER_YEAR / 12 / 4 + 25 / 4)
+    text = C.write_cost_report(cfg, root).read_text(encoding="utf-8")
+    assert "ai.google.dev/gemini-api/docs/pricing" in text and "repairs, not reports" in text
 
 
 def test_retrain_promotes_only_if_better(root):
