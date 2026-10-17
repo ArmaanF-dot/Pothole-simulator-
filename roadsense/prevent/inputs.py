@@ -1,7 +1,7 @@
 """Lane C inputs: config, and loaders for the other lanes' outputs with labelled fallbacks.
 
 Segments: lane A's data/processed/ (after the merge), then lane C's copy of lane A's real
-Southampton files in roadsense/prevent/mock_data/, then lane B's mock, then a small lane C mock.
+Southampton files in roadsense/prevent/mock_data/ (optional, removed after Merge 1), then lane B's mock, then a small lane C mock.
 Risk and lights: lane B's outputs when their segment ids match the segments in use, otherwise a
 labelled mock in the contract's columns (docs/contract_outputs.md sections 7-8) on those segments.
 Every frame carries where it came from so the API and page can show SYNTHETIC, MOCK and

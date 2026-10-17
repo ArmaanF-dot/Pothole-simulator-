@@ -4,7 +4,7 @@
 
 paths:
   processed_dir: data/processed            # lane A
-  lane_c_copy_dir: roadsense/prevent/mock_data   # copy of lane A real Southampton segments + load until the merge
+  lane_c_copy_dir: roadsense/prevent/mock_data   # optional fallback copy of other lanes' files (empty since Merge 1)
   lane_b_mock_dir: data/synthetic/mock_inputs
   synthetic_dir: data/synthetic            # lane B
   models_dir: data/models                  # lane B
