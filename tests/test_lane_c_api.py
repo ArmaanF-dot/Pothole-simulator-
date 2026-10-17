@@ -292,3 +292,24 @@ def test_open_meteo_attribution_on_page():
     js = (web / "app.js").read_text(encoding="utf-8")
     assert "Weather data by Open-Meteo.com" in html and "https://open-meteo.com/" in html
     assert js.count("OPEN_METEO") >= 4  # banner, segment weather weeks, footer
+
+
+def test_second_city_map_only(root):
+    w = mock_world()
+    seg = w["segments"].iloc[:20].assign(city="Brighton", segment_id=lambda d: "BRI-" + d["segment_id"])
+    home = pd.read_parquet(root / "data" / "processed" / "segments.parquet").assign(city="Southampton")
+    pd.concat([home, seg]).to_parquet(root / "data" / "processed" / "segments.parquet")
+    from roadsense.prevent.mock import mock_risk
+    r = mock_risk(seg).assign(city="Brighton", trained_on="real", uses_synthetic=False, history_source="real",
+                              rank_pct=lambda d: d["p30"].rank(pct=True))
+    r.to_parquet(root / "outputs" / "risk_brighton_latest.parquet")
+    app = TestClient(create_app(Service(root=root)))
+    assert app.get("/meta").json()["cities"] == ["Southampton", "Brighton"]
+    gj = app.get("/segments", params={"city": "Brighton"}).json()
+    assert gj["meta"]["badge"] == "100% real inputs" and len(gj["features"]) == len(seg) - (seg["highway"] == "motorway").sum()
+    assert {f["properties"]["band"] for f in gj["features"]} <= {"critical", "high", "prevention", "monitor"}
+    one = app.get(f"/segments/{gj['features'][0]['properties']['segment_id']}", params={"city": "Brighton"}).json()
+    assert one["city"] == "Brighton" and "Southampton only" in one["note"]
+    assert app.get("/segments", params={"city": "Leeds"}).status_code == 404
+    # Southampton plan is unaffected by the second city's segments
+    assert all(not row["segment_id"].startswith("BRI-") for row in app.get("/plan/prevention").json()["rows"])

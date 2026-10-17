@@ -127,6 +127,19 @@ class Service:
                                                       confirmed=self.confirmed())
         return self._scenario_scored[scenario]
 
+    def city_view(self, city: str):
+        """Map-only second city (lane B's risk_<city>_latest.parquet); cached."""
+        from roadsense.api.cities import CityView
+        if not hasattr(self, "_cities"):
+            self._cities = {}
+        if city not in self._cities:
+            self._cities[city] = CityView(self.cfg, city, self.root)
+        return self._cities[city]
+
+    def other_cities(self) -> list[str]:
+        from roadsense.api.cities import available
+        return [c for c in available(self.cfg, self.root) if c != self.cfg["coverage"]["city"]]
+
     def warm(self) -> dict:
         """Pre-compute every what-if scenario and the map layer so the live demo never waits."""
         import time
@@ -144,10 +157,17 @@ class Service:
     def inputs_mock(self) -> bool:
         return "mock" in (self.seg_meta["kind"], self.risk_meta["kind"])
 
+    def model_label(self) -> str:
+        return I.model_label(self.risk_meta.get("trained_on"), self.risk_meta.get("history_source"))
+
     def badges(self) -> dict:
-        return {"synthetic": True, "mock_inputs": self.inputs_mock,
-                "note": "Risk labels, wear and the lighting register are SYNTHETIC (no council data). "
-                        + ("Segments or risk are MOCK until lane A and B outputs are merged." if self.inputs_mock else "")}
+        real_labels = str(self.risk_meta.get("trained_on") or "").lower() == "real"
+        what = ("Risk is ranked by a model trained on real FixMyStreet reports; its pothole history, wear and the "
+                "lighting register are SYNTHETIC (no council data). ") if real_labels else \
+            "Risk labels, wear and the lighting register are SYNTHETIC (no council data). "
+        return {"synthetic": True, "mock_inputs": self.inputs_mock, "labels_real": real_labels,
+                "model_label": self.model_label(),
+                "note": what + ("Segments or risk are MOCK until lane A and B outputs are merged." if self.inputs_mock else "")}
 
     # --- reads ---------------------------------------------------------------------------------
     # contract section 10: segments.parquet fields + latest risk row + urgency, band, load_confidence
@@ -163,7 +183,7 @@ class Service:
                      ["wear_pct", "p30_w0", "p30_w1", "p30_w2", "p30_w3", "p30_peak", "p30_rise", "urgency_peak", "band_peak",
                       "consequence", "consequence_text", "treatment_cost_gbp", "reactive_cost_avoided_gbp",
                       "avoided_per_gbp", "esal_day", "traffic_note", "cracking", "weather_source", "as_of",
-                      "labels_synthetic", "wear_synthetic", "input_source"])
+                      "labels_synthetic", "history_source", "wear_synthetic", "input_source"])
     SEG_COLS = DETAIL_FIELDS  # flat JSON (?format=json)
 
     def _geometry(self, sid: str) -> dict:
@@ -241,6 +261,7 @@ class Service:
             movers = records(cmp_.head(10).reset_index(), ["segment_id", "name", "ward", "highway", "esal_day", "bus_stop",
                                                           "urgency_base", "urgency_scn", "band_scn", "p30_peak_change"])
         return {"movers": movers, "as_of": self.risk_meta.get("as_of"), "trained_on": self.risk_meta.get("trained_on"),
+                "model_label": self.model_label(),
                 "model_version": self.risk_meta.get("model_version"), "ward": ward, "scenario": scenario, "scenario_method": method,
                 "freshness": f, "provisional": f["provisional"], "count": len(p), "costs": self.cfg["costs"],
                 "horizon": "reactive repairs avoided over each treatment's service life (years): "
@@ -326,7 +347,7 @@ class Service:
         """Synthetic and model outputs (lanes B and C), shown after the real sources."""
         out = [src("risk", "pothole risk P7/P30, wear and reasons", LICENCES["risk"], rm.get("retrieved_at"),
                    rm.get("as_of"), True, "MOCK" if rm["kind"] == "mock" else
-                   f"SYNTHETIC labels ({rm.get('model_version') or 'model'}, trained on {rm.get('trained_on') or 'synthetic'})",
+                   f"{rm.get('model_version') or 'model'}, {self.model_label()}",
                    rm["kind"], rm["path"]),
                src("lights", "lamps due for replacement and currently dark", LICENCES["lights"], lm.get("retrieved_at"),
                    lm.get("as_of"), True, "MOCK" if lm["kind"] == "mock" else "SYNTHETIC", lm["kind"], lm["path"])]

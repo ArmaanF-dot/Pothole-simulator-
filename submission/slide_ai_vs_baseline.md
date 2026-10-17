@@ -2,7 +2,7 @@
 
 ## Headline
 
-**On real Southampton reports, RoadSense's top 10% of roads caught 39% of next year's reported potholes. Ranking by last
+**On real Southampton reports, RoadSense's top 10% of roads caught 42% of next year's reported potholes. Ranking by last
 year's complaints caught 34%.**
 
 ## Chart (bar, with 95% interval whiskers)
@@ -13,22 +13,29 @@ resamples, seed 2026.
 
 | Method | Capture | 95% interval |
 | --- | --- | --- |
-| RoadSense model (road, load, weather + past reports) | 38.6% | 31.0% to 45.3% |
+| RoadSense model (road, load, weather + past reports) | 41.6% | 33.9% to 47.9% |
 | Baseline: last year's reports | 33.7% | 24.5% to 38.9% |
 | Load x past reports formula | 19.8% | 14.5% to 25.2% |
-| Physical features only (no past reports) | 19.9% | 12.8% to 26.4% |
+| Physical features only (no past reports) | 10.4% | 7.1% to 14.3% |
 | Random | 10% | |
 
-Footnote line: **Model minus baseline +4.9 points (95% 0.9 to 12.1); model ahead in 99% of resamples.**
+Footnote line: **Model minus baseline +7.9 points (95% 3.1 to 15.5); model ahead in 100% of resamples.** Brighton
+2023-25: 31.2% vs 21.7% (+9.5, 4.9 to 12.2). Trained without Southampton, the model still beats the baseline there
+(36.6% vs 33.5%, +3.1, 0.9 to 8.1): the second-city argument in numbers.
 
 ## Honesty box (keep it on the slide)
 
-- Frozen 2026 check, Jan to Oct, only 33 reports: model 12.1% vs baseline 12.1%, so no difference at that size.
-- Without past reports the model falls short of the baseline (19.9% vs 33.7%): the physical features alone are not
+- Frozen 2026 check, Jan to Oct, only 33 reports: model 15.2% vs baseline 12.1% (+3.0, -12.1 to 14.8), so no clear
+  difference at that size.
+- Without past reports the model falls short of the baseline (10.4% vs 33.7%): the physical features alone are not
   enough, the combination is what wins.
+- Leave-one-city-out is ahead of the baseline in all three cities, but only clearly for Southampton (Brighton +1.9,
+  -3.0 to 6.0; Portsmouth +6.2, -3.8 to 12.7).
 - FixMyStreet counts measure who reports, not where the damage is, and Southampton has no reports for 2020 to 2022.
-- The weekly model behind the live plan is trained on SYNTHETIC repair records (council logs are not public). On
-  those it scores PR-AUC 0.253 for 30-day risk against 0.095 for prior pothole count: a pipeline check, not proof.
+- The live plan is ranked by this real-report model ("trained on real reports · history synthetic": its recent
+  pothole history comes from the SYNTHETIC repair log because council logs are not public). The weekly weather model
+  is trained on synthetic labels; on those it scores PR-AUC 0.253 against 0.095 for prior pothole count: a pipeline
+  check, not proof.
 
 ## Why it matters (one line, from the research doc)
 

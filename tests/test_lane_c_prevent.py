@@ -281,3 +281,21 @@ def test_plan_csv_has_contract_confirmation_columns(cfg, tmp_path):
         assert col in out
     assert "confirmed_report" not in out
     assert set(out["confirmed_by"]) <= {"", "keyword", "gemini", "crew"}
+
+
+def test_labels_synthetic_follows_trained_on(world):
+    long = mock_risk(world["segments"])
+    long["trained_on"], long["uses_synthetic"], long["history_source"] = "real", True, "synthetic council log"
+    r = I.normalise_risk(long)
+    assert not r["labels_synthetic"].any() and r["uses_synthetic"].all()
+    assert I.model_label("real", "synthetic council log") == "trained on real reports · history synthetic"
+    assert I.model_label("synthetic", None) == "trained on synthetic labels"
+    long["trained_on"] = "synthetic"
+    assert I.normalise_risk(long)["labels_synthetic"].all()
+
+
+def test_plan_rows_say_real_labels_when_trained_on_real(cfg, world):
+    long = mock_risk(world["segments"]).assign(trained_on="real", uses_synthetic=True, history_source="synthetic")
+    sc = P.score(world["segments"], long, cfg)
+    s = sc[sc["scored"]]
+    assert not s["labels_synthetic"].any() and s["uses_synthetic"].all()

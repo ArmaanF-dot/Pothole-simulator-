@@ -59,19 +59,26 @@ tag, and every screen that uses one shows a **SYNTHETIC** badge.
 | `data/synthetic/streetlights.csv`, `light_faults.csv` | the lighting asset register and fault history |
 | `data/synthetic/crew_outcomes.csv` | inspection results for the feedback loop |
 
-So risk labels, wear and the lighting register are synthetic. Accuracy on synthetic labels is a pipeline check,
-not proof the model works on real roads; the real-data tests are below. Every assumption is in
+The live plan's risk ranking is **trained on real FixMyStreet reports**; only its recent pothole history (mapped
+from the synthetic repair log, because real 2020-26 reports are too thin), road wear and the lighting register are
+synthetic. The dashboard says "trained on real reports · history synthetic". The weekly weather model is trained on
+synthetic labels, so its accuracy is a pipeline check, not proof; the real-data tests are below. Every assumption is in
 `config/synthetic.yaml` and `DATA_GAPS.md`.
 
 ## How well it works
 
-- **Real FixMyStreet test, Southampton 2018-19 (381 reports):** the real-label model put 38.6% of the next year's
-  reports on the top 10% of road length (95% interval 31.0% to 45.3%) against 33.7% for "last year's reports"
-  (24.5% to 38.9%). Paired difference +4.9 points (0.9 to 12.1); the model was ahead in 99% of 1,000 bootstrap
-  resamples. Source: `reports/real_risk_eval.md`.
-- **Frozen 2026 check (Jan to Oct, 33 reports):** model 12.1% vs last-year baseline 12.1%, so no difference at
-  that sample size. We report it anyway.
-- **Weekly model on synthetic labels (time split):** PR-AUC 0.253 for 30-day risk vs 0.095 for prior pothole
+- **Real FixMyStreet test, Southampton 2018-19 (381 reports):** the real-label model (trained on Southampton,
+  Brighton and Portsmouth) put 41.6% of the next year's reports on the top 10% of road length (95% interval 33.9% to
+  47.9%) against 33.7% for "last year's reports" (24.5% to 38.9%). Paired difference +7.9 points (3.1 to 15.5); the
+  model was ahead in 100% of 1,000 bootstrap resamples. Source: `reports/real_risk_eval.md`.
+- **Brighton 2023-25 (802 reports):** 31.2% (27.2% to 34.8%) against 21.7% for last year's reports, +9.5 points
+  (4.9 to 12.2).
+- **Second-city test (leave one city out, trained without that city):** Southampton 36.6% vs 33.5% (+3.1, 0.9 to 8.1);
+  Brighton 18.4% vs 16.5% (+1.9, -3.0 to 6.0); Portsmouth 19.2% vs 13.1% (+6.2, -3.8 to 12.7). Ahead in all three,
+  clearly so only for Southampton.
+- **Frozen 2026 check (Jan to Oct, 33 Southampton reports):** model 15.2% vs last-year baseline 12.1% (+3.0, -12.1 to
+  14.8), so no clear difference at that sample size. We report it anyway.
+- **Weekly weather model on synthetic labels (time split, used for week-to-week movement and the what-if):** PR-AUC 0.253 for 30-day risk vs 0.095 for prior pothole
   count and 0.036 for road age. Pipeline check only. Source: `reports/risk_eval.md`.
 - **Streetlights:** the Weibull model ranks no better than install year (precision in the top 5%: 0.039 vs
   0.036); its value is the replacement date. Source: `reports/lights_eval.md`.
