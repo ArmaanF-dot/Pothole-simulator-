@@ -282,9 +282,16 @@ async function loadInspection(c) {
   document.querySelectorAll("#inspect-rows tr[data-id]").forEach((tr) => tr.onclick = () => showCitySegment(tr.dataset.id));
 }
 
+// page title per city; the home city keeps the original text
+const CITY_TITLE = { Brighton: ["Brighton & Hove highways · inspection list", "RoadSense · Brighton & Hove"] };
+const HOME_TITLE = [document.querySelector("#brand-sub").textContent, document.title];
+
 async function setCity(c) {
   state.city = c;
   const other = otherCity();
+  const [sub, title] = other ? (CITY_TITLE[c] || [`${c} highways · inspection list`, `RoadSense · ${c}`]) : HOME_TITLE;
+  $("#brand-sub").textContent = sub;
+  document.title = title;
   document.body.classList.toggle("other-city", other);
   ["#ward-wrap", "#scenario-wrap", "#triage-form", "#queue", "#triage-note"].forEach((s) => $(s).classList.toggle("hidden", other));
   $("#city-triage").classList.toggle("hidden", !other);
@@ -297,7 +304,7 @@ async function setCity(c) {
   $("#detail").classList.add("hidden");
   if (other) {
     const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
-    note.innerHTML = `<b>${esc(c)}: risk map only</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
+    note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
       <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
       The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
       Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;

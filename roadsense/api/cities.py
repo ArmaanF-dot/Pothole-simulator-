@@ -90,7 +90,7 @@ class CityView:
                 "risk_band": r["risk_band"], "risk_label": RANK_LABEL[r["risk_band"]],
                 "reasons": [x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str)],
                 "badge": self.badge(), **self.meta,
-                "note": f"Map only: the prevention plan, streetlights and triage cover Southampton only."}
+                "note": "Inspection list and read-only triage from real reports. Streetlights are Southampton only."}
 
     INSPECT_HEADER = ("{city} inspection list: ranked by risk from real FixMyStreet reports. "
                       "No wear model for {city}, so treatments are chosen on inspection.")
