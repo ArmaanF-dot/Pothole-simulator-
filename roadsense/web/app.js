@@ -3,7 +3,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (x, d = 3) => (x === null || x === undefined ? "n/a" : Number(x).toFixed(d));
 const BAND_COLOR = { critical: "#c62828", high: "#ef6c00", prevention: "#f9a825", monitor: "#7cb342" };
-const state = { ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null };
+const state = { city: "", homeCity: "", ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null };
 const vbClass = (t) => (String(t).startsWith("Pays back") ? "pay" : String(t).startsWith("Confirmed") ? "must"
   : String(t).startsWith("Simulated") ? "sim" : "loss");
 
@@ -24,6 +24,13 @@ const badge = (t, cls = "") => `<span class="badge ${cls}">${t}</span>`;
 async function loadMeta() {
   const m = await api("/meta?" + qs({ forecast_as_of: new URLSearchParams(location.search).get("forecast_as_of") }));
   state.meta = m;
+  state.homeCity = state.homeCity || m.city;
+  state.city = state.city || m.city;
+  const cs = $("#city");
+  if ((m.cities || []).length > 1 && cs.options.length === 0) {
+    m.cities.forEach((c) => cs.add(new Option(c, c)));
+    $("#city-wrap").classList.remove("hidden");
+  }
   const sel = $("#ward");
   if (sel.options.length === 1) m.wards.forEach((w) => sel.add(new Option(w, w)));
   $("#badges").innerHTML = (m.badges.labels_real ? badge("REAL LABELS", "real") + " " : "") + badge("SYNTHETIC", "") + (m.badges.mock_inputs ? badge("MOCK INPUTS", "mock") : "")
@@ -74,8 +81,13 @@ function renderPlanRows() {
   document.querySelectorAll("#plan-rows tr[data-id]").forEach((tr) => tr.onclick = () => showSegment(tr.dataset.id, true));
 }
 
+const otherCity = () => state.city && state.city !== state.homeCity;
+const LEGEND = { home: ["Critical 90+", "High 70-89", "Prevention 40-69", "Monitor"],
+  other: ["Top 1% risk in city", "Top 5%", "Top 10%", "Lower risk"] };
+
 async function loadMap() {
-  const gj = await api("/segments?" + qs({ ward: state.ward, scenario: state.scenario }));
+  const gj = await api("/segments?" + qs(otherCity() ? { city: state.city } : { ward: state.ward, scenario: state.scenario }));
+  document.querySelectorAll(".legend b.lg").forEach((el, i) => el.textContent = LEGEND[otherCity() ? "other" : "home"][i]);
   const src = state.map.getSource("segments");
   if (src) src.setData(gj); else {
     state.map.addSource("segments", { type: "geojson", data: gj });
@@ -102,6 +114,8 @@ async function loadMap() {
     state.map.on("click", "open", (e) => { e.preventDefault(); const p = e.features[0].properties;
       new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Open FixMyStreet report</b><br>${esc(p.title)}<br>Reported ${esc(p.date)} · urgency 100`).addTo(state.map); });
   }
+  state.map.setLayoutProperty("open", "visibility", otherCity() ? "none" : "visible");  // Southampton reports only
+  return gj;
 }
 
 function detail(html) { const d = $("#detail"); d.innerHTML = `<button class="close" onclick="this.parentNode.classList.add('hidden')">×</button>` + html; d.classList.remove("hidden"); }
@@ -114,7 +128,18 @@ async function locate(lat, lon) {
   showSegment(r.segment_id);
 }
 
+async function showCitySegment(id) {
+  const s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ city: state.city }));
+  detail(`<h3>${esc(s.name)}</h3><div class="muted small">${esc(s.segment_id)} · ${esc(s.highway)} · ${esc(s.ward)} · ${esc(s.city)}</div>
+    <p><span class="vb ${s.risk_band === "rest" ? "pay" : "must"}">${esc(s.risk_label)}</span> ${badge(s.badge, s.badge.startsWith("100%") ? "real" : "")}</p>
+    <div class="kv"><div>Risk P30</div><div>${fmt(s.p30)} (rank ${fmt(100 * s.rank_pct, 1)}th percentile)</div>
+      <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
+      <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} reports · history ${esc(s.history_source)}</div></div>
+    <p class="small muted">${esc(s.note)}</p>`);
+}
+
 async function showSegment(id, fly) {
+  if (otherCity()) return showCitySegment(id);
   const s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ scenario: state.scenario }));
   if (fly && state.mapReady) state.map.flyTo({ center: [s.lon, s.lat], zoom: 16 });
   if (s.status !== "scored") return detail(`<h3>${esc(s.name)}</h3><p><b>${esc(s.status)}</b></p>`);
@@ -223,6 +248,28 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== "tab-" + b.dataset.tab));
   if (b.dataset.tab === "lights") loadLights();
 });
+async function setCity(c) {
+  state.city = c;
+  const other = otherCity();
+  document.body.classList.toggle("other-city", other);
+  ["#ward-wrap", "#scenario-wrap"].forEach((s) => $(s).classList.toggle("hidden", other));
+  const note = $("#city-note");
+  note.classList.toggle("hidden", !other);
+  $("#detail").classList.add("hidden");
+  if (other) {
+    const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
+    note.innerHTML = `<b>${esc(c)}: risk map only</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
+      <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
+      The prevention plan, report triage and streetlights are <b>Southampton only</b>: switch back to see them.</span>`;
+  }
+  if (state.mapReady) {
+    const gj = await loadMap();
+    const b = new maplibregl.LngLatBounds();
+    gj.features.forEach((f) => f.geometry.coordinates.forEach((x) => b.extend(x)));
+    if (!b.isEmpty()) state.map.fitBounds(b, { padding: 20, duration: 0 });
+  }
+}
+$("#city").onchange = (e) => setCity(e.target.value);
 $("#ward").onchange = (e) => { state.ward = e.target.value; refresh(); if (!$("#tab-lights").classList.contains("hidden")) loadLights(); };
 $("#scenario").onchange = async (e) => { state.scenario = e.target.value; $("#plan-head").textContent = "Re-scoring…"; await Promise.all([loadPlan(), state.mapReady ? loadMap() : null]); };
 $("#dark-only").onchange = loadLights;

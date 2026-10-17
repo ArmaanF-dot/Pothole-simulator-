@@ -11,8 +11,9 @@
 <header>
   <div class="brand"><strong>RoadSense</strong> <span class="muted">Southampton highways · weekly prevention plan</span></div>
   <div class="controls">
-    <label>Ward <select id="ward"><option value="">All wards</option></select></label>
-    <label>What-if <select id="scenario">
+    <label id="city-wrap" class="hidden">City <select id="city"></select></label>
+    <label id="ward-wrap">Ward <select id="ward"><option value="">All wards</option></select></label>
+    <label id="scenario-wrap">What-if <select id="scenario">
       <option value="">This week's forecast</option>
       <option value="rain_then_frost">Rain then frost</option>
       <option value="wet_week">Wet week</option>
@@ -30,6 +31,7 @@
       <button data-tab="triage">Report triage <span id="qcount" class="pill"></span></button>
       <button data-tab="lights">Streetlights</button>
     </nav>
+    <div id="city-note" class="card hidden"></div>
     <div id="tab-plan" class="tab">
       <nav class="subtabs">
         <button data-view="all" class="active">All roads</button>
@@ -62,10 +64,10 @@
   <section id="mapwrap">
     <div id="map"></div>
     <div class="legend">
-      <span><i style="background:var(--critical)"></i>Critical 90+</span>
-      <span><i style="background:var(--high)"></i>High 70-89</span>
-      <span><i style="background:var(--prevention)"></i>Prevention 40-69</span>
-      <span><i style="background:var(--monitor)"></i>Monitor</span>
+      <span><i style="background:var(--critical)"></i><b class="lg">Critical 90+</b></span>
+      <span><i style="background:var(--high)"></i><b class="lg">High 70-89</b></span>
+      <span><i style="background:var(--prevention)"></i><b class="lg">Prevention 40-69</b></span>
+      <span><i style="background:var(--monitor)"></i><b class="lg">Monitor</b></span>
       <span><i style="background:var(--grey)"></i>National Highways</span>
       <span><i class="dot"></i>Open FixMyStreet report</span>
     </div>

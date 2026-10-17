@@ -57,18 +57,34 @@ def create_app(service: Service | None = None) -> FastAPI:
                 "scenarios": list(s.cfg["whatif"]["scenarios"]), "gemini": s.client is not None,
                 "bands": {b: int((sc["band"] == b).sum()) for b in ["critical", "high", "prevention", "monitor"]},
                 "official_report_url": s.cfg["coverage"]["official_report_url"],
-                "official_streetlight_url": s.cfg["coverage"]["official_streetlight_url"]}
+                "official_streetlight_url": s.cfg["coverage"]["official_streetlight_url"],
+                "cities": [s.cfg["coverage"]["city"]] + s.other_cities()}
 
     @app.get("/segments")
     def segments(ward: str | None = None, band: str | None = None, scenario: str | None = None,
                  format: str = Query("geojson", pattern="^(json|geojson)$"), limit: int | None = None,
-                 detail: str = Query("map", pattern="^(map|full)$")):
-        return svc().segments(ward=ward, band=band, scenario=scenario, geojson=format == "geojson", limit=limit,
+                 detail: str = Query("map", pattern="^(map|full)$"), city: str | None = None):
+        s = svc()
+        if city and city != s.cfg["coverage"]["city"]:
+            try:
+                return s.city_view(city).geojson()
+            except FileNotFoundError:
+                raise HTTPException(404, f"no risk file for {city}")
+        return s.segments(ward=ward, band=band, scenario=scenario, geojson=format == "geojson", limit=limit,
                               full=detail == "full")
 
     @app.get("/segments/{segment_id}")
-    def segment(segment_id: str, scenario: str | None = None):
-        r = svc().segment(segment_id, scenario=scenario)
+    def segment(segment_id: str, scenario: str | None = None, city: str | None = None):
+        s = svc()
+        if city and city != s.cfg["coverage"]["city"]:
+            try:
+                r = s.city_view(city).segment(segment_id)
+            except FileNotFoundError:
+                raise HTTPException(404, f"no risk file for {city}")
+            if r is None:
+                raise HTTPException(404, "unknown segment")
+            return r
+        r = s.segment(segment_id, scenario=scenario)
         if r is None:
             raise HTTPException(404, "unknown segment")
         return r

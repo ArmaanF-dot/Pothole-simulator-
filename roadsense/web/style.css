@@ -67,3 +67,6 @@ form#triage-form select { max-width: 100%; }
 .credit { font-size: 11px; color: var(--muted); }
 .banner .credit { color: inherit; font-weight: 400; }
 .badge.real { background: #2e7d32; }
+.legend b.lg { font-weight: 400; }
+#city-note { margin-top: 8px; }
+.other-city .tab { display: none !important; }

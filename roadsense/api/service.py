@@ -127,6 +127,19 @@ class Service:
                                                       confirmed=self.confirmed())
         return self._scenario_scored[scenario]
 
+    def city_view(self, city: str):
+        """Map-only second city (lane B's risk_<city>_latest.parquet); cached."""
+        from roadsense.api.cities import CityView
+        if not hasattr(self, "_cities"):
+            self._cities = {}
+        if city not in self._cities:
+            self._cities[city] = CityView(self.cfg, city, self.root)
+        return self._cities[city]
+
+    def other_cities(self) -> list[str]:
+        from roadsense.api.cities import available
+        return [c for c in available(self.cfg, self.root) if c != self.cfg["coverage"]["city"]]
+
     def warm(self) -> dict:
         """Pre-compute every what-if scenario and the map layer so the live demo never waits."""
         import time
