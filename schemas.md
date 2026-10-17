@@ -69,7 +69,7 @@ One row per piece of road, all cities stacked. Built from OSM (ODbL) `network_ty
 | lat, lon | float | midpoint |
 | bus_stop | bool | OSM bus stop within 20 m |
 | bus_routes | int | number of OSM `route=bus` relations using the way |
-| junction | bool | segment ends at a node with ≥3 drivable ways |
+| junction | bool | segment ends at a node where ≥4 streets meet, or a mini-roundabout/traffic-signal node (3-way meets are left out: nearly every edge ends at one) |
 | in_flood_area | bool | midpoint in an EA Flood Zone 3 polygon (false if the layer is unavailable; logged) |
 | owner | str | `council` / `national_highways` (motorway or trunk with a National Highways ref) |
 | geometry | WKB | EPSG:4326 LineString |
@@ -117,3 +117,4 @@ One row per ward × week, exactly as lane B asked for. **Every window uses only 
 1. **Snap radius:** your draft uses 15 m and STATUS.md says 25 m. `snap_dist_m` is stored so either works. Pick one for the headline numbers.
 2. **Segment length:** lane A cuts to ≤200 m (STATUS.md). Your mock uses 75 m. Tell us if the models need shorter pieces.
 3. **Residential roads:** they are kept in `segments.parquet` for your synthetic generators. The FixMyStreet scores use `is_main_road` only.
+4. **Label roads (team decision):** only 27% of Southampton 2015–19 reports (261 of 997) snap to main roads (≤25 m). Main-road-only labels keep that 27%. All roads keep about 98%. `labels_segment_year.csv` says main roads only for now, until this is decided.

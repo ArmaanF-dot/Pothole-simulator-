@@ -8,3 +8,7 @@
 - **Portsmouth is small** (321 labels after cleaning). It is extra training data / a transfer test, not a headline result.
 - **Counts measure FixMyStreet use, not pothole rates.** Scores rank segments within each city and year. Raw totals are never compared across cities.
 - **Pavement filter is keyword-based.** A hand check of 25 Brighton reports each way found about 24/25 kept reports were genuine road defects and 22/25 removed ones genuine pavement defects. Some error stays in the labels.
+- **No flood layer yet.** `in_flood_area` is false for every segment until the Environment Agency flood zones are added.
+- **Junction = 4+ streets or a mini-roundabout/signal node.** In OSM's simplified graph almost every edge ends at a 3-way meet, so those are not counted (16% of Southampton segments are junctions).
+- **National Highways roads = motorways only** (10 Southampton segments, M27/M271). OSM doesn't say who owns trunk A-roads.
+- **B-roads often lack a `ref` in OSM** (64 km of Southampton main road has no ref). They are still `is_main_road` by highway class.

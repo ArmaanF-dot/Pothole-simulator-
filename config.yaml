@@ -46,6 +46,21 @@ labels:
     Brighton:    {usable: [2008, 2025], train: [2008, 2022], test: [2023, 2025]}
     Portsmouth:  {usable: [2008, 2025], train: [2008, 2025], test: null}
 
+osm:
+  # Tried in order: the main server is often full
+  overpass_urls: [https://overpass-api.de/api, https://maps.mail.ru/osm/tools/overpass/api]
+  mapit_url: https://mapit.mysociety.org
+  # MapIt area id of each council (for ward boundaries: children of type UTW / MTW)
+  council_area: {Southampton: 2567, Portsmouth: 2657, Brighton: 2614}
+
 segments:
   max_length_m: 200
+  bus_stop_m: 20                 # OSM bus stop within this distance -> bus_stop = true
+  junction_min_streets: 4        # crossroads or bigger (3-way meets are everywhere in the simplified graph)
+  junction_node_tags: [mini_roundabout, traffic_signals, motorway_junction]
   main_road_highways: [primary, secondary, tertiary, primary_link, secondary_link, tertiary_link]
+  # owner = national_highways for these classes; everything else is council
+  national_highways_highways: [motorway, motorway_link]
+  # Rank used when OSM merges ways of different classes into one edge: the first match wins
+  highway_rank: [motorway, trunk, primary, secondary, tertiary, motorway_link, trunk_link, primary_link,
+                 secondary_link, tertiary_link, unclassified, residential, living_street, road, service]
