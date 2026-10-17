@@ -75,7 +75,7 @@ What this does and doesn't show:
 ### Limits of FixMyStreet data
 
 FixMyStreet is one of several ways residents report problems, so its reports are only part of the picture. mySociety,
-which runs it, warns against using the data to compare or rank areas. RoadSense therefore only ranks roads *within* a
+which runs it, [warns against using the data to compare or rank areas](https://www.mysociety.org/2024/02/06/statement-from-mysociety-regarding-misuse-of-fixmystreet-data/). RoadSense therefore only ranks roads *within* a
 city and never compares councils. Report status relies on residents marking problems fixed, so many "open" reports
 are years old. The app only treats reports from the last 120 days as open.
 [FixMyStreet itself notes](https://www.fixmystreet.com/about/connecting) that local road conditions can't be inferred
