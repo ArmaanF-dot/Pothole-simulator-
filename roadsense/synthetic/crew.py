@@ -22,6 +22,8 @@ def _top_segments(seg: pd.DataFrame, potholes: pd.DataFrame, cfg: dict, outputs_
     if risk_files:
         r = pd.read_parquet(risk_files[-1])
         r = r[r["segment_id"].isin(seg["segment_id"])]
+        if "horizon_week" in r:
+            r = r[r["horizon_week"] == 0]
         return r.sort_values("p30", ascending=False)["segment_id"].head(n).tolist(), f"model_top:{risk_files[-1].name}"
     as_of = pd.Timestamp(cfg["as_of"])
     recent = potholes[pd.to_datetime(potholes["reported_date"]) >= as_of - pd.Timedelta(days=365)]

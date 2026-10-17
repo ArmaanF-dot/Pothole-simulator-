@@ -122,6 +122,24 @@ def score(lamps: pd.DataFrame, units: pd.DataFrame, params: dict, other_rate: fl
     })
 
 
+def fms_dark_lamps(out: pd.DataFrame, root: Path, as_of: pd.Timestamp, since: pd.Timestamp, radius_m: float = 25.0) -> pd.Series:
+    """Nearest lamp to each open FixMyStreet street-lighting report made in the dark window (real data)."""
+    p = root / "data" / "processed" / "fms_streetlights.csv"
+    if not p.exists():
+        return pd.Series(dtype=object)
+    f = pd.read_csv(p)
+    f["date"] = pd.to_datetime(f["requested"], utc=True, format="mixed").dt.tz_localize(None)
+    f = f[(f["status"] == "open") & (f["date"] >= since) & (f["date"] < as_of)]
+    if f.empty:
+        return pd.Series(dtype=object)
+    from scipy.spatial import cKDTree
+    from roadsense.synthetic.common import to_xy
+    tree = cKDTree(np.c_[to_xy(out["lon"].values, out["lat"].values)])
+    d, j = tree.query(np.c_[to_xy(f["lon"].values, f["lat"].values)])
+    ok = d <= radius_m
+    return pd.Series(f["date"].dt.date.values[ok], index=out["lamp_id"].values[j[ok]]).groupby(level=0).min()
+
+
 def precision_top(score_vals: np.ndarray, y: np.ndarray, frac: float) -> float:
     k = max(1, int(round(len(y) * frac)))
     jitter = 1e-12 * np.random.default_rng(0).random(len(y))
@@ -177,6 +195,7 @@ def write_report(path: Path, cfg, params, bt, out, n_dark, run_info):
           f"- Lamps scored: {len(out):,}; mean P(fail in 90 days) {out['p_fail_90d'].mean():.3f}.",
           f"- Due in 90 days (P >= 0.5 or replacement date within 90 days): {int(out['due_90d'].sum()):,}.",
           f"- Replacement overdue (cumulative failure already >= 0.5): {int(out['replacement_overdue'].sum()):,}.",
+          f"- Dark from open FixMyStreet reports in the last 30 days (real): {int((out['dark_source'] == 'fixmystreet').sum())}.",
           f"- Currently dark (failed in the last 30 days, not yet repaired): {n_dark}.", ""]
     fms = path.parents[1] / "data" / "processed" / "fms_streetlights.csv"
     if fms.exists():
@@ -212,16 +231,27 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
     fd = pd.to_datetime(faults["fault_date"])
     dark = faults[(faults["status"] == "open") & (fd >= win)].groupby("lamp_id")["fault_date"].min()
     out = lamps[["lamp_id", "segment_id", "lat", "lon"]].merge(sc, on="lamp_id")
-    out["due_90d"] = (out["p_fail_90d"] >= 0.5) | (pd.to_datetime(out["predicted_replacement_date"]) <= as_of + pd.Timedelta(days=HORIZON_DAYS))
+    out = out.rename(columns={"unit_type": "lamp_type", "predicted_replacement_date": "replace_by"})
+    out["due_90d"] = (out["p_fail_90d"] >= 0.5) | (pd.to_datetime(out["replace_by"]) <= as_of + pd.Timedelta(days=HORIZON_DAYS))
     out["currently_dark"] = out["lamp_id"].isin(dark.index)
+    out["dark_source"] = np.where(out["currently_dark"], "synthetic", "")
     out["dark_since"] = out["lamp_id"].map(dark)
+    real_dark = fms_dark_lamps(out, root, as_of, win)
+    if len(real_dark):
+        m = out["lamp_id"].isin(real_dark.index)
+        out.loc[m, "currently_dark"] = True
+        out.loc[m, "dark_source"] = "fixmystreet"
+        out.loc[m, "dark_since"] = out.loc[m, "lamp_id"].map(real_dark)
+    out["uses_synthetic"] = True
     out["is_synthetic"] = True
+    out["model_version"] = f"lights@{t0.strftime('%Y-%m-%dT%H:%M')}"
     out["source"] = f"model:{MODEL_VERSION} on synthetic:streetlights,light_faults"
     out["as_of"] = cfg["as_of"]
     od = resolve(cfg, "outputs_dir", root)
     od.mkdir(parents=True, exist_ok=True)
     path = od / f"lights_{cfg['as_of']}.parquet"
     out.to_parquet(path, index=False)
+    out.to_parquet(od / "lights_latest.parquet", index=False)
     md = resolve(cfg, "models_dir", root)
     md.mkdir(parents=True, exist_ok=True)
     (md / "lights_weibull.json").write_text(json.dumps({"params": params, "other_fault_rate_per_year": rate,

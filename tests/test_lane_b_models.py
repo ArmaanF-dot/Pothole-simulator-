@@ -73,11 +73,14 @@ def test_risk_outputs_cover_every_segment(world, trained):
     cfg, root, d = world
     out = pd.read_parquet(trained["out"])
     assert set(out["segment_id"]) == set(d["seg"]["segment_id"])
-    for c in ["p7", "p30", "wear_pct", "reason_1", "p30_w0", "p30_w3", "labels_synthetic"]:
-        assert c in out
-    assert out["p30"].between(0, 1).all() and out["wear_pct"].between(0, 100).all()
+    contract = ["segment_id", "week_start", "p7", "p30", "wear", "reason_1", "reason_2", "reason_3", "model_version",
+                "trained_on", "uses_synthetic", "weather_data_date", "uses_forecast"]
+    assert [c for c in contract if c not in out] == []
+    assert len(out) == out["segment_id"].nunique() * cfg["risk"]["forward_weeks"]
+    assert not out.duplicated(["segment_id", "week_start"]).any()
+    assert out["p30"].between(0, 1).all() and out["wear"].between(0, 100).all()
     assert out["reason_1"].notna().mean() > 0.9
-    assert out["labels_synthetic"].all()
+    assert out["uses_synthetic"].all()
 
 
 def test_eval_report_has_model_and_both_baselines(trained, world):

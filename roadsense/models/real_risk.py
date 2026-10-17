@@ -28,7 +28,8 @@ from roadsense.synthetic.common import ROOT, load_config, neighbours, resolve, t
 MODEL_VERSION = "real-risk-v0.1"
 HIGHWAY_CODE = {"primary": 3, "primary_link": 3, "trunk": 4, "trunk_link": 4, "secondary": 2, "secondary_link": 2,
                 "tertiary": 1, "tertiary_link": 1}
-STATIC = ["log_esal_day", "log_hgv_bus_aadf", "bus_routes", "bus_stop", "junction", "in_flood_area", "length_m", "highway_code"]
+STATIC = ["log_esal_day", "log_hgv_bus_aadf", "bus_routes", "bus_stop", "junction", "in_flood_area", "length_m", "highway_code",
+          "is_main_road"]
 HISTORY = ["rep_prev1", "rep_prev2_3", "rep_nb_prev1", "rep_prev1_per_km"]
 FEATURES = STATIC + HISTORY + ["city_code"]
 MONOTONE = {"log_esal_day": 1, "log_hgv_bus_aadf": 1}
@@ -133,8 +134,9 @@ def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 22
         "in_flood_area": seg["in_flood_area"].astype(float).values if "in_flood_area" in seg else np.nan,
         "length_m": seg["length_m"].astype(float).values,
         "highway_code": seg["highway"].map(HIGHWAY_CODE).fillna(0).astype(float).values,
+        "is_main_road": seg["is_main_road"].astype(float).values if "is_main_road" in seg else np.nan,
     })
-    lab = labels[labels["split"] != "excluded"].copy()
+    lab = labels[labels["split"] != "excluded"].drop(columns=["is_main_road"], errors="ignore").copy()
     lab["segment_id"] = lab["segment_id"].astype(str)
     piv = lab.pivot_table(index="segment_id", columns="year", values="n_reports", aggfunc="sum")
     # neighbour sums per city (graph-neighbour proxy: midpoints within nb_radius_m)
@@ -147,22 +149,32 @@ def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 22
             nb_map[sid] = ids[nbs[i]]
     df = lab.merge(s, on=["segment_id", "city"], how="left")
 
-    def prev(sid, y, k):
-        if sid not in piv.index or (y - k) not in piv.columns:
-            return np.nan
-        return piv.at[sid, y - k]
+    # k-th earlier labelled year for that city (the frozen 2026 year looks back to the last usable year)
+    city_years = lab.groupby("city")["year"].apply(lambda s: sorted(s.unique())).to_dict()
 
-    df["rep_prev1"] = [prev(a, y, 1) for a, y in zip(df["segment_id"], df["year"])]
-    df["rep_prev2_3"] = [np.nansum([prev(a, y, 2), prev(a, y, 3)]) if not (np.isnan(prev(a, y, 2)) and np.isnan(prev(a, y, 3))) else np.nan
-                         for a, y in zip(df["segment_id"], df["year"])]
-    year_cols = set(piv.columns)
+    def earlier(city, y, k):
+        ys = [x for x in city_years.get(city, []) if x < y]
+        return ys[-k] if len(ys) >= k else None
+
+    def prev(sid, city, y, k):
+        e = earlier(city, y, k)
+        if sid not in piv.index or e is None:
+            return np.nan
+        return piv.at[sid, e]
+
+    keys = list(zip(df["segment_id"], df["city"], df["year"]))
+    df["rep_prev1"] = [prev(a, c, y, 1) for a, c, y in keys]
+    p2 = np.array([prev(a, c, y, 2) for a, c, y in keys], float)
+    p3 = np.array([prev(a, c, y, 3) for a, c, y in keys], float)
+    df["rep_prev2_3"] = np.where(np.isnan(p2) & np.isnan(p3), np.nan, np.nan_to_num(p2) + np.nan_to_num(p3))
     nb_vals = []
-    for a, y in zip(df["segment_id"], df["year"]):
-        if (y - 1) not in year_cols:
+    for a, c, y in keys:
+        e = earlier(c, y, 1)
+        if e is None:
             nb_vals.append(np.nan)
             continue
         ids = [n for n in nb_map.get(a, []) if n in piv.index]
-        nb_vals.append(float(piv.loc[ids, y - 1].fillna(0).sum()) if ids else 0.0)
+        nb_vals.append(float(piv.loc[ids, e].fillna(0).sum()) if ids else 0.0)
     df["rep_nb_prev1"] = nb_vals
     df["rep_prev1_per_km"] = df["rep_prev1"] / (df["length_m"] / 1000.0)
     df["city_code"] = pd.Categorical(df["city"])

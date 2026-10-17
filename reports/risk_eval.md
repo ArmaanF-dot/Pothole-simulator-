@@ -1,6 +1,6 @@
 # Risk model evaluation
 
-_Generated 2026-10-17T12:08:19+00:00 by `python -m roadsense.models.risk` (risk-v0.1). as_of 2026-10-12._
+_Generated 2026-10-17T12:56:04+00:00 by `python -m roadsense.models.risk` (risk-v0.1). as_of 2026-10-12._
 
 **Labels are SYNTHETIC** (Generator 2, seed 2026). Scores on synthetic labels are a pipeline check, not proof the model works on real roads. The real-world check below uses real FixMyStreet reports.
 

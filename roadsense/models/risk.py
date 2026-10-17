@@ -400,23 +400,30 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
         fwd[f"p{k[1:]}"] = m.predict(fwd)
     now = fwd[fwd["horizon_week"] == 0].reset_index(drop=True)
     reasons = shap_reasons(models["y30"], now)
-    piv = fwd.pivot_table(index="segment_id", columns="horizon_week", values="p30")
-    out = now[["segment_id", "ward", "week_start", "p7", "p30"]].copy()
-    for k in piv.columns:
-        out[f"p30_w{k}"] = out["segment_id"].map(piv[k])
-    out["p30_trend"] = out[f"p30_w{piv.columns.max()}"] - out["p30_w0"]
-    out["wear_pct"] = out["segment_id"].map(surv.set_index("segment_id")["wear_pct"]).round(1)
-    out["reason_1"], out["reason_2"], out["reason_3"] = ([r[i] if len(r) > i else None for r in reasons] for i in range(3))
-    out["weather_source"] = ",".join(f"w{i}:{s}" for i, s in enumerate(wsrc))
-    out["labels_synthetic"] = True
-    out["wear_synthetic"] = True
+    rmap = {sid: r for sid, r in zip(now["segment_id"], reasons)}
+    # contract (docs/contract_outputs.md section 7): one row per scored segment per forecast week
+    out = fwd[["segment_id", "ward", "week_start", "horizon_week", "p7", "p30"]].copy()
+    out["week_start"] = pd.to_datetime(out["week_start"]).dt.date
+    w0 = out[out["horizon_week"] == 0].set_index("segment_id")["p30"]
+    last = out[out["horizon_week"] == out["horizon_week"].max()].set_index("segment_id")["p30"]
+    out["p30_trend"] = out["segment_id"].map(last - w0)
+    out["wear"] = out["segment_id"].map(surv.set_index("segment_id")["wear_pct"]).round(1)
+    for i in range(3):
+        out[f"reason_{i + 1}"] = [rmap[s][i] if len(rmap[s]) > i else None for s in out["segment_id"]]
+    out["weather_source"] = [wsrc[k] for k in out["horizon_week"]]
+    out["uses_forecast"] = out["weather_source"] == "forecast"
+    wx_last = pd.to_datetime(data["wx"]["week_start"]).max() - pd.Timedelta(hours=1)
+    out["weather_data_date"] = wx_last.strftime("%Y-%m-%dT%H:00")
+    out["model_version"] = f"risk@{t_start.strftime('%Y-%m-%dT%H:%M')}"
+    out["trained_on"] = "synthetic"
+    out["uses_synthetic"] = True
     out["inputs_mock"] = "mock" in data["sources"].values()
-    out["model_version"] = MODEL_VERSION
     out["as_of"] = cfg["as_of"]
     od = resolve(cfg, "outputs_dir", root)
     od.mkdir(parents=True, exist_ok=True)
     out_path = od / f"risk_{cfg['as_of']}.parquet"
     out.to_parquet(out_path, index=False)
+    out.to_parquet(od / "risk_latest.parquet", index=False)
 
     rd = resolve(cfg, "reports_dir", root)
     rd.mkdir(parents=True, exist_ok=True)
@@ -431,7 +438,7 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
                 print(f"{split:<8}{t:<4} model PR-AUC {r['model']['pr_auc']:.3f} top5 {r['model']['precision_top5']:.3f} | "
                       + " | ".join(f"{n} {r[n]['pr_auc']:.3f}/{r[n]['precision_top5']:.3f}" for n in BASELINES))
         print(f"real check: {json.dumps(real.get('results', real), default=str)}")
-        print(f"wrote {out_path} ({len(out):,} segments), reports/risk_eval.md")
+        print(f"wrote {out_path} ({out['segment_id'].nunique():,} segments x {out['horizon_week'].nunique()} weeks), reports/risk_eval.md")
     return {"eval": ev, "real": real, "out": out_path}
 
 

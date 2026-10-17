@@ -1,6 +1,6 @@
 # Streetlight model evaluation
 
-_Generated 2026-10-17T12:09:39+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
+_Generated 2026-10-17T12:57:38+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
 
 **The lamp register and fault history are SYNTHETIC** (Generators 3 and 4). The burn-hour clock is real: astral sunset to sunrise for Southampton, minus the council's 01:00 to 05:30 switch-off from 2023-12-01.
 
@@ -30,6 +30,7 @@ Almost every unit in service is an LED on the same burn-hour clock, so burn hour
 - Lamps scored: 16,723; mean P(fail in 90 days) 0.025.
 - Due in 90 days (P >= 0.5 or replacement date within 90 days): 3,498.
 - Replacement overdue (cumulative failure already >= 0.5): 3,249.
+- Dark from open FixMyStreet reports in the last 30 days (real): 0.
 - Currently dark (failed in the last 30 days, not yet repaired): 58.
 
 ## Real check: FixMyStreet street-lighting reports (Southampton, real data)

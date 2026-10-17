@@ -55,8 +55,10 @@ def test_lights_output(lit):
     lamps = pd.read_csv(root / "data" / "synthetic" / "streetlights.csv")
     assert set(out["lamp_id"]) == set(lamps["lamp_id"])
     assert out["p_fail_90d"].between(0, 1).all()
-    assert out["predicted_replacement_date"].notna().all()
-    assert out["is_synthetic"].all()
+    assert out["replace_by"].notna().all()
+    assert out["uses_synthetic"].all()
+    assert [c for c in ["lamp_id", "segment_id", "lat", "lon", "lamp_type", "p_fail_90d", "replace_by", "currently_dark",
+                        "dark_source", "uses_synthetic"] if c not in out] == []
     faults = pd.read_csv(root / "data" / "synthetic" / "light_faults.csv")
     open_recent = faults[(faults["status"] == "open")
                          & (pd.to_datetime(faults["fault_date"]) >= pd.Timestamp(cfg["as_of"]) - pd.Timedelta(days=30))]
@@ -67,6 +69,6 @@ def test_lights_output(lit):
 def test_older_units_have_higher_failure_probability(lit):
     _, _, res = lit
     out = pd.read_parquet(res["out"])
-    led = out[out["unit_type"] == "LED"].sort_values("burn_hours")
+    led = out[out["lamp_type"] == "LED"].sort_values("burn_hours")
     q = len(led) // 4
     assert led["p_fail_90d"].iloc[-q:].mean() > led["p_fail_90d"].iloc[:q].mean()
