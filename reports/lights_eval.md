@@ -1,6 +1,6 @@
 # Streetlight model evaluation
 
-_Generated 2026-10-17T11:44:38+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
+_Generated 2026-10-17T12:09:39+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
 
 **The lamp register and fault history are SYNTHETIC** (Generators 3 and 4). The burn-hour clock is real: astral sunset to sunrise for Southampton, minus the council's 01:00 to 05:30 switch-off from 2023-12-01.
 
@@ -31,3 +31,8 @@ Almost every unit in service is an LED on the same burn-hour clock, so burn hour
 - Due in 90 days (P >= 0.5 or replacement date within 90 days): 3,498.
 - Replacement overdue (cumulative failure already >= 0.5): 3,249.
 - Currently dark (failed in the last 30 days, not yet repaired): 58.
+
+## Real check: FixMyStreet street-lighting reports (Southampton, real data)
+
+211 reports in `data/processed/fms_streetlights.csv`, by year: 2008: 2, 2009: 19, 2010: 9, 2011: 16, 2012: 24, 2013: 8, 2014: 21, 2015: 23, 2016: 36, 2017: 14, 2018: 23, 2019: 13, 2024: 1, 2025: 1, 2026: 1.
+This is far below any plausible lamp fault rate (inferred: streetlight faults mostly go through the council's ENERVEO portal instead), so it cannot calibrate the synthetic fault generator; open reports join the currently dark set in the app.

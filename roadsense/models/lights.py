@@ -178,6 +178,15 @@ def write_report(path: Path, cfg, params, bt, out, n_dark, run_info):
           f"- Due in 90 days (P >= 0.5 or replacement date within 90 days): {int(out['due_90d'].sum()):,}.",
           f"- Replacement overdue (cumulative failure already >= 0.5): {int(out['replacement_overdue'].sum()):,}.",
           f"- Currently dark (failed in the last 30 days, not yet repaired): {n_dark}.", ""]
+    fms = path.parents[1] / "data" / "processed" / "fms_streetlights.csv"
+    if fms.exists():
+        f = pd.read_csv(fms)
+        yrs = pd.to_datetime(f["requested"], utc=True, format="mixed").dt.year.value_counts().sort_index()
+        L += ["## Real check: FixMyStreet street-lighting reports (Southampton, real data)", "",
+              f"{len(f)} reports in `data/processed/fms_streetlights.csv`, by year: "
+              + ", ".join(f"{y}: {n}" for y, n in yrs.items()) + ".",
+              "This is far below any plausible lamp fault rate (inferred: streetlight faults mostly go through the council's ENERVEO portal instead), "
+              "so it cannot calibrate the synthetic fault generator; open reports join the currently dark set in the app.", ""]
     path.write_text("\n".join(L), encoding="utf-8")
 
 

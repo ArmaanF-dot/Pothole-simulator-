@@ -39,3 +39,10 @@ mock row carries `input_source="mock"`. Mock wards are named "Mock ward 01..17".
 ## Needed at the merge (shared files)
 - Makefile: `synthetic: python -m roadsense.synthetic`, `train: python -m roadsense.models.risk`, `lights: python -m roadsense.models.lights`. Run order: synthetic, train, then synthetic again so crew outcomes select from the model.
 - requirements.txt: numpy, pandas, pyarrow, pyyaml, scipy, shapely, lightgbm, scikit-learn, lifelines, shap, astral, tzdata, matplotlib, pytest.
+
+## Answers to lane A's open questions (schemas.md v1)
+1. **Snap radius:** 25 m for real FixMyStreet labels (headline numbers); resident GPS is coarse. 15 m stays for synthetic potholes, which are generated within 10 m of their segment.
+2. **Segment length:** up to 200 m works for both lane B models. The spec's ~75 m only matters for how precise the treatment list is.
+3. **Residential roads:** keep them in segments.parquet. The synthetic generators and streetlights use every council road; the real-label model filters on `is_main_road`.
+
+Real-label model: `python -m roadsense.models.real_risk` reads segments.parquet, load.parquet and labels_segment_year.csv (or fms_snapped.csv / fms_roads_clean.csv and snaps itself), uses `config.yaml: labels.windows`, and writes reports/real_risk_eval.md.
