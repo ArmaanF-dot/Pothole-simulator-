@@ -3,3 +3,4 @@ __pycache__/
 data/fms_raw.csv
 # Raw API pulls (free text) stay local
 data/raw/
+.venv/
