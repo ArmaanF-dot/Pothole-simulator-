@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 17 Oct 2026, 16:45_
+_Last updated: 17 Oct 2026, 17:05_
 
 ## Done
 - `pull_fixmystreet.py` pulls FixMyStreet road/pavement reports for Southampton, Portsmouth and Brighton (2008–2026).
@@ -33,6 +33,7 @@ _Last updated: 17 Oct 2026, 16:45_
     - **Portsmouth wards come from ONS** (Dec 2024, OGL): MapIt's free quota ran out (429). Same official names, `mapit_id` null. `wards.geojson` now has all 54 wards (`python -m roadsense.features.wards <city>`), and ONS is added to `sources.json`.
 
 ## Next (in order)
+- **Contract test on `main` is red** until lane C adds §9 `confirmed_source_id` and `confirmed_is_synthetic` to the plan CSV (`outputs/prevention_plan_latest.csv`). See 5fa0d49.
 0. **Decided: labels use all roads**, with `is_main_road` as a feature (only 27% of Southampton reports are on A/B roads).
    Lane B to answer the other open questions in `schemas.md`. At merge, delete the old `data/fms_*.csv` (lane B still points at `data/fms_dedup.csv`).
    Lane A milestones M1–M3 follow steps 1–4 below and write to `data/processed/` as `schemas.md` describes.
