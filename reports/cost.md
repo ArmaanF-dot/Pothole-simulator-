@@ -1,6 +1,6 @@
 # Running cost per officer
 
-_Generated 2026-10-17T17:06:51+00:00 by `python -m roadsense.agent.cost` from the token log (`outputs/lane_c/token_log.jsonl`). Re-run it after any live Gemini run and this page updates._
+_Generated 2026-10-17T17:27:47+00:00 by `python -m roadsense.agent.cost` from the token log (`outputs/lane_c/token_log.jsonl`). Re-run it after any live Gemini run and this page updates._
 
 ## Measured
 
@@ -33,7 +33,7 @@ Expected reactive repairs avoided over each treatment's service life, x £87.80,
 
 ## Not measured (config assumptions)
 
-- **Price:** $0.3/M input and $2.5/M output is the Gemini 2.5 Flash paid-tier list price. The logged model is `gemini-3.8-flash`; its price has not been checked, so confirm on ai.google.dev/pricing before quoting the £ figure.
+- **Price:** $0.3/M input and $2.5/M output is the Gemini 2.5 Flash paid-tier list price, applied to every model. Triage falls back through `gemini-3.8-flash`, `gemini-3-flash-preview`, `gemini-flash-latest`; the table shows which model answered each call. None of their prices has been checked, so confirm each on ai.google.dev/pricing before quoting the £ figure.
 - **Volume:** 300 reports a month city-wide (about 3,600 Southampton pothole repairs a year, FOI 2021-2025) shared by 4 officers. Both are assumptions.
 - **Hosting:** £25 a month for one small VM running the API and page. Assumption.
 - **The weekly plan uses no LLM**, so it adds no token cost.

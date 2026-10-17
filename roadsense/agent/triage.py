@@ -193,36 +193,76 @@ def _report_text(rep: dict) -> str:
             f"lon {rep['lon']:.6f}.\nText: {rep.get('title') or ''}\n{rep.get('detail') or ''}".strip())
 
 
-_last_call = [0.0]
+_last_call: dict[str, float] = {}
+_model_pos = [0]  # index of the model that answered last; later calls start there
+FALLBACK_CODES = {429, 500, 503, 504}
 
 
-def _generate(client, cfg: dict, **kw):
-    """generate_content with pacing and retry on 429 (free tier: 5 requests a minute)."""
+def models(cfg: dict) -> list[str]:
+    t = cfg["triage"]
+    return list(t.get("models") or [t["model"]])
+
+
+def _is_fallback_error(e: Exception) -> bool:
+    code = getattr(e, "code", None) or getattr(e, "status_code", None)
+    if code in FALLBACK_CODES:
+        return True
+    name = type(e).__name__.lower()
+    return "timeout" in name or "timedout" in name or "deadline" in str(e).lower()
+
+
+def _generate(client, cfg: dict, contents=None, config=None) -> tuple[object, str]:
+    """generate_content over the model fallback list. A 429/5xx or a call slower than call_timeout_s moves
+    to the next model; the model that answers is returned and tried first next time. Free-tier pacing
+    (min_interval_s between calls to the same model) applies only to the real API, not test fakes."""
     import time
     t = cfg["triage"]
-    for attempt in range(t.get("max_retries", 6)):
-        wait = t.get("min_interval_s", 0) - (time.monotonic() - _last_call[0])
-        if wait > 0 and type(client).__module__.startswith("google.genai"):  # pace only the real API, not test fakes
+    ms = models(cfg)
+    real = type(client).__module__.startswith("google.genai")
+    if real and config is not None and t.get("call_timeout_s"):
+        from google.genai import types
+        config = config.model_copy(update={"http_options": types.HttpOptions(timeout=int(t["call_timeout_s"] * 1000))})
+    order = ms[_model_pos[0] % len(ms):] + ms[:_model_pos[0] % len(ms)]
+    last_err = None
+    for model in order:
+        wait = t.get("min_interval_s", 0) - (time.monotonic() - _last_call.get(model, 0.0))
+        if wait > 0 and real:
             time.sleep(wait)
-        _last_call[0] = time.monotonic()
+        _last_call[model] = time.monotonic()
         try:
-            return client.models.generate_content(**kw)
-        except Exception as e:  # google.genai.errors.ClientError; kept generic so tests can fake it
-            if getattr(e, "code", None) != 429 or attempt == t.get("max_retries", 6) - 1:
+            resp = client.models.generate_content(model=model, contents=contents, config=config)
+            _model_pos[0] = ms.index(model)
+            return resp, model
+        except Exception as e:  # google.genai.errors.APIError / httpx timeouts; generic so tests can fake them
+            if not _is_fallback_error(e):
                 raise
-            m = re.search(r"retry in ([\d.]+)s", str(e))
-            time.sleep(float(m.group(1)) + 1 if m else 20)
+            last_err = e
+    raise last_err
 
 
 def gemini_triage(rep: dict, ctx: Context, client, image: tuple[bytes, str] | None = None,
                   root: Path | None = None, single_call: bool = False,
                   kind: str = "triage") -> tuple[dict | None, dict, list[str]]:
-    """Run the function-calling loop. Returns (draft_work_order args or None, token usage, tool trace).
+    """Gemini triage. Returns (draft_work_order args or None, token usage incl. the answering model, trace).
 
-    single_call: skip the lookup tools and ask for draft_work_order straight away (classification eval)."""
+    triage.mode "fast" (default): the code runs lookup_location, find_duplicates and get_risk itself and puts
+    the results in the prompt, so Gemini answers with draft_work_order in one call. "agent": the model calls
+    the tools itself (up to max_turns calls). single_call: classification only, no tool results (eval)."""
     from google.genai import types
     t = ctx.cfg["triage"]
-    parts = [types.Part.from_text(text=_report_text(rep))]
+    fast = t.get("mode", "fast") == "fast" and not single_call
+    text = _report_text(rep)
+    trace = []
+    if fast:
+        facts = {"lookup_location": ctx.lookup_location(rep["lat"], rep["lon"]),
+                 "find_duplicates": ctx.find_duplicates(rep["lat"], rep["lon"], str(rep["reported_at"]),
+                                                        exclude=str(rep["report_id"]))}
+        sid = facts["lookup_location"].get("segment_id")
+        if sid:
+            facts["get_risk"] = ctx.get_risk(sid)
+        trace = [f"prefetch:{k}" for k in facts]
+        text += "\n\nTool results (already run for you):\n" + json.dumps(facts, default=str)
+    parts = [types.Part.from_text(text=text)]
     if image is not None:
         parts.append(types.Part.from_bytes(data=image[0], mime_type=image[1]))
     contents = [types.Content(role="user", parts=parts)]
@@ -232,14 +272,16 @@ def gemini_triage(rep: dict, ctx: Context, client, image: tuple[bytes, str] | No
             types.FunctionDeclaration(name=d["name"], description=d["description"], parameters_json_schema=d["parameters"])
             for d in TOOLS])],
         tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(
-            mode="ANY", allowed_function_names=["draft_work_order"] if single_call else None)),
+            mode="ANY", allowed_function_names=["draft_work_order"] if (single_call or fast) else None)),
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     usage = {"prompt_tokens": 0, "output_tokens": 0, "thoughts_tokens": 0, "total_tokens": 0, "calls": 0}
-    trace, final = [], None
-    for _ in range(t["max_turns"]):
-        resp = _generate(client, ctx.cfg, model=t["model"], contents=contents, config=config)
+    final, answered = None, None
+    import time
+    t0 = time.monotonic()
+    for _ in range(1 if fast or single_call else t["max_turns"]):
+        resp, answered = _generate(client, ctx.cfg, contents=contents, config=config)
         u = _usage(resp)
         for k in u:
             usage[k] += u[k]
@@ -258,7 +300,10 @@ def gemini_triage(rep: dict, ctx: Context, client, image: tuple[bytes, str] | No
         if final is not None:
             break
         contents.append(types.Content(role="user", parts=replies))
-    log_tokens(ctx.cfg, kind, t["model"], usage, ref=str(rep["report_id"]), root=root)
+    usage["model"] = answered
+    usage["seconds"] = round(time.monotonic() - t0, 2)
+    log_tokens(ctx.cfg, kind, answered or models(ctx.cfg)[0], {k: v for k, v in usage.items() if k != "model"},
+               ref=str(rep["report_id"]), root=root)
     return final, usage, trace
 
 
@@ -272,7 +317,14 @@ def triage(rep: dict, ctx: Context, client=None, method: str = "auto", image: tu
     loc = ctx.lookup_location(rep["lat"], rep["lon"])
     dups = ctx.find_duplicates(rep["lat"], rep["lon"], rep["reported_at"], exclude=str(rep["report_id"]))
     used, usage, trace, llm = "keyword_baseline", None, [], None
-    if method in ("auto", "gemini") and client is not None:
+    original = next((q for q in ctx.queue if dups and q["report_id"] == dups[0]["report_id"]), None)
+    if original is not None and method == "auto":
+        # a duplicate inherits the original's triage: no second Gemini call (saves time and quota)
+        llm = {"category": original["category"], "confidence": original.get("confidence", 0),
+               "summary": original.get("summary"), "recommended_action": original.get("recommended_action"),
+               "hazard": original.get("hazard", False)}
+        used = f"merged into {original['report_id']} (no new Gemini call)"
+    elif method in ("auto", "gemini") and client is not None:
         try:
             llm, usage, trace = gemini_triage(rep, ctx, client, image=image, root=root)
             used = "gemini" if llm else "keyword_baseline (gemini returned no decision)"
@@ -288,7 +340,7 @@ def triage(rep: dict, ctx: Context, client=None, method: str = "auto", image: tu
     wo = {"report_id": str(rep["report_id"]), "source": rep.get("source", "fixmystreet"), "title": rep.get("title"),
           "reported_at": str(rep["reported_at"]), "lat": rep["lat"], "lon": rep["lon"], "category": category,
           "confidence": float((llm or {}).get("confidence", 0.6 if used == "keyword_baseline" else 0)),
-          "method": used, "tool_trace": trace, "tokens": usage, "location": loc,
+          "method": used, "model": (usage or {}).get("model"), "tool_trace": trace, "tokens": usage, "location": loc,
           "segment_id": loc.get("segment_id") if loc.get("status") == "ok" else None, "lamp_id": None,
           "duplicates": dups, "merged_into": dups[0]["report_id"] if dups else None,
           "official_report_url": official, "hazard": bool((llm or {}).get("hazard", False)),
@@ -343,7 +395,7 @@ def evaluate(cfg: dict | None = None, client=None, root: Path | None = None, lim
             tok.append(u["total_tokens"])
         g = pd.Series(preds, index=lab.index)
         res["gemini"] = {"accuracy": float((g == lab["label"]).mean()), "mean_tokens_per_report": float(np.mean(tok)),
-                         "model": cfg["triage"]["model"]}
+                         "model": ", ".join(models(cfg))}
         res["disagreements"] = lab.assign(keyword=kw, gemini=g)[(g != lab["label"]) | (kw != lab["label"])][
             ["fms_id", "title", "label", "keyword", "gemini"]].to_dict("records")
     for name in ["keyword_baseline"] + (["gemini"] if client is not None else []):
