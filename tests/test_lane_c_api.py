@@ -1,0 +1,215 @@
+"""Lane C, M8: triage agent, API, feedback loop and cost report. Fake Gemini client, no network."""
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pandas as pd
+import pytest
+from fastapi.testclient import TestClient
+from google.genai import types
+
+from roadsense.agent import cost as C
+from roadsense.agent import triage as TR
+from roadsense.api import retrain as RT
+from roadsense.api.main import create_app
+from roadsense.api.service import Service
+from roadsense.prevent import inputs as I
+from roadsense.prevent.mock import mock_world
+
+
+class FakeGemini:
+    """Plays the function-calling loop: lookup -> duplicates -> risk -> draft_work_order."""
+
+    def __init__(self, category="pothole"):
+        self.category, self.calls = category, []
+        self.models = self
+
+    def generate_content(self, model, contents, config):
+        assert config.tools and config.tool_config.function_calling_config.mode == "ANY"
+        self.calls.append(contents)
+        text = contents[0].parts[0].text
+        lat = float(text.split("lat ")[1].split(",")[0])
+        lon = float(text.split("lon ")[1].split(".\n")[0])
+        n = len(self.calls)
+        if n == 1:
+            fc = types.FunctionCall(name="lookup_location", args={"lat": lat, "lon": lon})
+        elif n == 2:
+            fc = types.FunctionCall(name="find_duplicates", args={"lat": lat, "lon": lon, "reported_at": "2026-10-12"})
+        elif n == 3:
+            fc = types.FunctionCall(name="get_risk", args={"segment_id": "X003-004"})
+        else:
+            fc = types.FunctionCall(name="draft_work_order", args={
+                "category": self.category, "confidence": 0.9, "asset_type": "segment", "asset_id": "INVENTED",
+                "duplicate_of": "", "hazard": True, "summary": "Deep pothole in nearside lane",
+                "recommended_action": "Permanent repair"})
+        content = types.Content(role="model", parts=[types.Part(function_call=fc)])
+        usage = SimpleNamespace(prompt_token_count=400 + 50 * n, candidates_token_count=30, thoughts_token_count=0,
+                                total_token_count=430 + 50 * n)
+        return SimpleNamespace(function_calls=[fc], candidates=[SimpleNamespace(content=content)], usage_metadata=usage)
+
+    def reset(self):
+        self.calls = []
+
+
+@pytest.fixture
+def root(tmp_path):
+    """A repo-shaped folder: mock world files plus a few real FixMyStreet rows."""
+    w = mock_world()
+    seg = w["segments"].iloc[30:40]          # mock road 4 (tertiary), council
+    fms = pd.DataFrame({
+        "city": "Southampton", "id": [111, 112, 113],
+        "category": "Potholes", "requested": ["2026-10-10T09:00:00+00:00", "2026-10-11T09:00:00+00:00", "2026-01-01T00:00:00+00:00"],
+        "updated": "2026-10-12T00:00:00+00:00", "status": "open",
+        "lat": [seg["lat"].iloc[4] + 5 / I.M_PER_DEG_LAT, seg["lat"].iloc[4] + 8 / I.M_PER_DEG_LAT, 51.5],
+        "lon": [seg["lon"].iloc[4], seg["lon"].iloc[4] + 3 / I.M_PER_DEG_LON, -0.1],
+        "title": ["Large pothole in road", "Pothole", "Pothole in London"], "surface_keyword": True})
+    (tmp_path / "data").mkdir()
+    fms.to_csv(tmp_path / "data" / "fms_roads_clean.csv", index=False)
+    (tmp_path / "outputs").mkdir()
+    w["risk"].to_parquet(tmp_path / "outputs" / "risk_2026-10-12.parquet")
+    w["lights"].to_parquet(tmp_path / "outputs" / "lights_2026-10-12.parquet")
+    (tmp_path / "data" / "processed").mkdir()
+    w["segments"].to_parquet(tmp_path / "data" / "processed" / "segments.parquet")
+    (tmp_path / "data" / "synthetic").mkdir()
+    pd.DataFrame({"outcome_id": ["CO1", "CO2"], "segment_id": ["X003-001", "X003-002"], "inspection_date": "2026-10-20",
+                  "selection": "random", "outcome": ["pothole", "none"], "is_synthetic": True,
+                  "source": "synthetic:crew@1.0"}).to_csv(tmp_path / "data" / "synthetic" / "crew_outcomes.csv", index=False)
+    return tmp_path
+
+
+def test_keyword_baseline():
+    assert TR.keyword_classify("Large pothole in road") == "pothole"
+    assert TR.keyword_classify("Street light not working") == "streetlight"
+    assert TR.keyword_classify("Loose pavement slabs") == "other"
+    assert TR.keyword_classify("Blocked drain") == "other"
+
+
+def test_labels_file_has_100_reports():
+    lab = pd.read_csv(I.ROOT / "roadsense" / "agent" / "eval" / "triage_labels.csv")
+    assert len(lab) == 100 and set(lab["label"]) <= set(TR.CATEGORIES)
+    res = TR.evaluate()
+    assert 0 < res["keyword_baseline"]["accuracy"] <= 1
+
+
+def test_end_to_end_triage_attach_approve_outcome_rescore(root):
+    fake = FakeGemini()
+    svc = Service(root=root, client=fake)
+    app = TestClient(create_app(svc))
+
+    # 1. triage a real report with Gemini function calling
+    wo = app.post("/reports", json={"fms_id": 111}).json()
+    assert wo["method"] == "gemini" and wo["category"] == "pothole"
+    assert [c for c in wo["tool_trace"]] == ["lookup_location", "find_duplicates", "get_risk", "draft_work_order"]
+    # 2. attached to its segment by code, never by the model's invented id
+    assert wo["segment_id"] == "X003-004" and wo["segment_id"] != "INVENTED"
+    assert wo["status"] == "pending_approval" and wo["urgency"] >= 70
+    assert wo["official_report_url"].startswith("https://www.southampton.gov.uk")
+    assert wo["tokens"]["total_tokens"] > 0
+    # 3. a second real report 3 m away the next day merges as a duplicate
+    fake.reset()
+    dup = app.post("/reports", json={"fms_id": 112}).json()
+    assert dup["status"] == "merged" and dup["merged_into"] == "fms-111"
+    # 4. officer approves
+    before = app.get("/segments/X003-004").json()
+    r = app.post("/workorders/fms-111/approve", json={"officer": "test"}).json()
+    assert r["work_order"]["status"] == "approved"
+    assert r["segment"]["urgency"] >= max(70, before["urgency"])
+    assert app.post("/workorders/fms-111/approve").status_code == 409
+    # 5. crew outcome re-scores the segment
+    out = app.post("/outcomes", json={"segment_id": "X003-004", "outcome": "pothole"}).json()
+    assert out["after"]["urgency"] == 100 and out["after"]["band"] == "critical"
+    assert out["after"]["treatment"] == "permanent_repair"
+    seg = app.get("/segments/X003-004").json()
+    assert seg["confirmed_open"] and seg["outcomes"][0]["outcome"] == "pothole"
+    assert app.get("/triage/queue").json()[0]["status"] == "inspected"
+    # tokens were logged for the cost report
+    log = C.read_log(svc.cfg, root)
+    assert len(log) == 2 and (log["kind"] == "triage").all()
+    labels = pd.read_csv(root / "outputs" / "lane_c" / "outcome_labels.csv")
+    assert labels["segment_id"].tolist() == ["X003-004"]
+
+
+def test_state_survives_restart(root):
+    svc = Service(root=root)
+    svc.triage_report({"fms_id": 111})
+    svc.approve("fms-111")
+    again = Service(root=root)
+    assert again.queue[0]["status"] == "approved"
+    assert again.segment("X003-004")["urgency"] >= 70
+
+
+def test_keyword_fallback_without_gemini(root):
+    app = TestClient(create_app(Service(root=root)))
+    wo = app.post("/reports", json={"title": "Large pothole in the road", "lat": 50.9002, "lon": -1.4395,
+                                     "reported_at": "2026-10-12"}).json()
+    assert wo["method"] == "keyword_baseline" and wo["category"] == "pothole"
+    assert app.post("/reports", json={"title": "x", "lat": 1, "lon": 1, "method": "gemini"}).status_code == 503
+
+
+def test_failure_cases(root):
+    app = TestClient(create_app(Service(root=root, forecast_as_of="2026-10-01T06:00:00+00:00")))
+    assert app.get("/locate", params={"lat": 51.5, "lon": -0.1}).json()["status"] == "out_of_coverage"
+    mw = app.get("/segments", params={"band": "not_scored"}).json()["segments"]
+    m = mw[0]
+    loc = app.get("/locate", params={"lat": m["lat"], "lon": m["lon"]}).json()
+    assert loc["status"] == "national_highways" and "not scored" in loc["message"]
+    wo = app.post("/reports", json={"fms_id": 113}).json()
+    assert wo["status"] == "out_of_coverage"
+    plan = app.get("/plan/prevention").json()
+    assert plan["freshness"]["stale"] and plan["provisional"]
+    seg = app.get("/segments", params={"limit": 5}).json()["segments"]
+    assert all(s["traffic_note"] in ("DfT count on this road", "modelled estimate, low confidence") for s in seg)
+
+
+def test_read_endpoints(root):
+    app = TestClient(create_app(Service(root=root)))
+    meta = app.get("/meta").json()
+    assert meta["badges"]["synthetic"] and meta["wards"]
+    gj = app.get("/segments", params={"format": "geojson"}).json()
+    assert gj["type"] == "FeatureCollection" and gj["features"][0]["geometry"]["type"] == "LineString"
+    w = meta["wards"][0]
+    assert all(s["ward"] == w for s in app.get("/segments", params={"ward": w}).json()["segments"])
+    plan = app.get("/plan/prevention", params={"scenario": "rain_then_frost"}).json()
+    assert plan["scenario_method"] == "sensitivity_surrogate"
+    assert app.get("/plan/prevention", params={"scenario": "nope"}).status_code == 400
+    lights = app.get("/lights", params={"due": True}).json()
+    assert lights["synthetic"] and all(l["due_90d"] or l["replacement_overdue"] for l in lights["lamps"])
+    srcs = app.get("/sources").json()
+    names = {s["dataset"] for s in srcs}
+    assert {"segments", "risk", "lights", "fixmystreet_reports", "weather_forecast"} <= names
+    assert all({"licence", "retrieved_at", "synthetic"} <= set(s) for s in srcs)
+    assert app.get("/segments/nope").status_code == 404
+    assert app.get("/").status_code == 200
+
+
+def test_bulk_crew_outcomes(root):
+    app = TestClient(create_app(Service(root=root)))
+    r = app.post("/outcomes", json={"crew_file": True}).json()
+    assert r["recorded"] == 2
+    assert app.get("/segments/X003-001").json()["urgency"] == 100
+    assert app.post("/outcomes", json={"crew_file": True}).json()["recorded"] == 0  # idempotent
+
+
+def test_cost_report(root):
+    cfg = I.load_config()
+    C.write_cost_report(cfg, root)
+    assert "No live Gemini calls" in (root / "reports" / "cost.md").read_text(encoding="utf-8")
+    TR.log_tokens(cfg, "triage", "m", {"prompt_tokens": 1000, "output_tokens": 100, "thoughts_tokens": 0, "total_tokens": 1100}, root=root)
+    r = C.compute(cfg, C.read_log(cfg, root))
+    exp = (1000 * 0.30 + 100 * 2.50) * 0.75 / 1e6
+    assert r["per_item"]["triage"]["gbp"] == pytest.approx(exp)
+    assert r["total_gbp_per_officer_month"] == pytest.approx(exp * 300 / 4 + 25 / 4)
+    assert "per officer per month" in C.write_cost_report(cfg, root).read_text(encoding="utf-8")
+
+
+def test_retrain_promotes_only_if_better(root):
+    md = root / "data" / "models"
+    md.mkdir(parents=True)
+    (md / "risk_eval.json").write_text(json.dumps({"eval": {"time": {"y30": {"model": {"pr_auc": 0.30}}}}}))
+    (md / "risk_y30.txt").write_text("old")
+    worse = RT.run(root=root, train_fn=lambda extra: (0.25, {"risk_y30.txt": b"new"}))
+    assert not worse["promoted"] and (md / "risk_y30.txt").read_text() == "old"
+    better = RT.run(root=root, train_fn=lambda extra: (0.35, {"risk_y30.txt": b"new"}))
+    assert better["promoted"] and (md / "risk_y30.txt").read_text() == "new"
+    assert any(p.name.startswith("previous_") for p in md.iterdir())

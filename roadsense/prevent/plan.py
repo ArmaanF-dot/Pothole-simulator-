@@ -62,6 +62,9 @@ def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | Non
     df["cracking"] = df["segment_id"].map(lambda s: bool(feedback.get(s, {}).get("cracking", False)))
     df["consequence"], df["consequence_text"] = U.consequence(df, cfg)
     df["urgency"] = U.urgency(df["p30"], df["wear_pct"], df["consequence"], cfg, df["confirmed_open"])
+    # an approved, not yet inspected report holds the segment at least at the report floor
+    floor = df["segment_id"].map(lambda s: feedback.get(s, {}).get("urgency_floor", 0)).astype(float)
+    df["urgency"] = np.maximum(df["urgency"], floor)
     df["band"] = U.band(df["urgency"], cfg)
     df.loc[~df["scored"], ["urgency", "band"]] = [np.nan, None]
     df["p30_peak"] = df[P30_WEEKS].max(axis=1)

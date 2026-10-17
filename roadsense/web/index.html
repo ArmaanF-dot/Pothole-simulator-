@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RoadSense · Southampton</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><strong>RoadSense</strong> <span class="muted">Southampton highways · weekly prevention plan</span></div>
+  <div class="controls">
+    <label>Ward <select id="ward"><option value="">All wards</option></select></label>
+    <label>What-if <select id="scenario">
+      <option value="">This week's forecast</option>
+      <option value="rain_then_frost">Rain then frost</option>
+      <option value="wet_week">Wet week</option>
+      <option value="cold_snap">Cold snap</option>
+    </select></label>
+    <span id="badges"></span>
+  </div>
+</header>
+<div id="stale" class="banner hidden"></div>
+<main>
+  <section id="panel">
+    <nav class="tabs">
+      <button data-tab="plan" class="active">Prevention plan</button>
+      <button data-tab="triage">Report triage <span id="qcount" class="pill"></span></button>
+      <button data-tab="lights">Streetlights</button>
+    </nav>
+    <div id="tab-plan" class="tab">
+      <p id="plan-head" class="muted"></p>
+      <table class="rows"><thead><tr><th>#</th><th>Segment</th><th>Urgency</th><th>Treatment</th><th>£ avoided per £</th></tr></thead>
+        <tbody id="plan-rows"></tbody></table>
+    </div>
+    <div id="tab-triage" class="tab hidden">
+      <form id="triage-form">
+        <label>Real FixMyStreet report <select id="fms-pick"></select></label>
+        <button type="submit">Triage report</button>
+        <button type="button" id="dup-btn" title="Submit the same real report again as a second resident would">Re-submit (duplicate)</button>
+      </form>
+      <p class="muted small">Only public FixMyStreet text is sent to Gemini. Dangerous road conditions:
+        <a id="official-link" target="_blank" rel="noopener">report to Southampton City Council</a>.</p>
+      <div id="queue"></div>
+    </div>
+    <div id="tab-lights" class="tab hidden">
+      <p id="lights-head" class="muted"></p>
+      <label><input type="checkbox" id="dark-only"> Currently dark only</label>
+      <table class="rows"><thead><tr><th>Lamp</th><th>Street</th><th>P(fail 90 d)</th><th>Replace by</th><th></th></tr></thead>
+        <tbody id="light-rows"></tbody></table>
+    </div>
+  </section>
+  <section id="mapwrap">
+    <div id="map"></div>
+    <div class="legend">
+      <span><i style="background:var(--critical)"></i>Critical 90+</span>
+      <span><i style="background:var(--high)"></i>High 70-89</span>
+      <span><i style="background:var(--prevention)"></i>Prevention 40-69</span>
+      <span><i style="background:var(--monitor)"></i>Monitor</span>
+      <span><i style="background:var(--grey)"></i>National Highways</span>
+      <span><i class="dot"></i>Open FixMyStreet report</span>
+    </div>
+    <aside id="detail" class="hidden"></aside>
+  </section>
+</main>
+<footer>
+  <div id="sources"></div>
+</footer>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
