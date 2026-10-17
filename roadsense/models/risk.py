@@ -338,9 +338,16 @@ def write_report(path: Path, ev: dict, data: dict, cfg: dict, real: dict, wear_i
           f"Shape rho = {wear_info['rho']:.2f}. Coefficients (log scale of time-to-first-pothole; negative = wears faster): "
           + ", ".join(f"{k} {v:+.3f}" for k, v in wear_info["coef"].items()) + ". Resurfacing history is SYNTHETIC, so wear is too.", "",
           "## Not done (see DATA_GAPS.md)", "",
-          "- Model trained on synthetic plus real FixMyStreet labels: skipped, too few dated Southampton reports overlap the feature window.",
+          "- Synthetic plus real labels in one model: not done; the real-label model is separate (section below).",
           "- Leave-one-city-out: waits on lane A's port-city data.", ""]
-    path.write_text("\n".join(L), encoding="utf-8")
+    txt = "\n".join(L)
+    # keep the real-label section written by roadsense.models.real_risk
+    if path.exists():
+        prev = path.read_text(encoding="utf-8")
+        a, b = "<!-- real-label-eval:start -->", "<!-- real-label-eval:end -->"
+        if a in prev and b in prev:
+            txt = txt.rstrip() + "\n\n" + prev[prev.index(a):prev.index(b) + len(b)] + "\n"
+    path.write_text(txt, encoding="utf-8")
 
 
 def plot_calibration(bins, path: Path):
