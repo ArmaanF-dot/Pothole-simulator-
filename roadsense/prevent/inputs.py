@@ -27,9 +27,22 @@ M_PER_DEG_LAT = 110_540.0
 M_PER_DEG_LON = 111_320.0 * np.cos(np.radians(LAT0))
 
 
-def load_config(path: Path | str | None = None) -> dict:
+LIVE_PATHS = ["processed_dir", "outputs_dir", "fms_csv"]   # what a daily refresh rebuilds (roadsense.refresh)
+
+
+def load_config(path: Path | str | None = None, live: bool = True) -> dict:
+    """App config. With no explicit path, if data/live/current points at a valid refresh build, the
+    refreshed paths are redirected there; otherwise the committed snapshot is used."""
     with open(path or CONFIG_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    if path is None and live:
+        from roadsense.refresh.live import current_build
+        build = current_build()
+        if build is not None:
+            for k in LIVE_PATHS:
+                cfg["paths"][k] = str(build / cfg["paths"][k])
+            cfg["live_build"] = build.name
+    return cfg
 
 
 def resolve(cfg: dict, key: str, root: Path | None = None) -> Path:

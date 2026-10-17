@@ -40,6 +40,10 @@ async function loadMeta() {
   b.innerHTML = esc(m.freshness.message + (m.badges.mock_inputs ? " " + m.badges.note : "")) + " · " + OPEN_METEO;
   b.classList.toggle("hidden", !m.freshness.provisional && !m.badges.mock_inputs);
   $("#official-link").href = m.official_report_url;
+  const du = m.data_updated || {};
+  const when = du.timestamp ? new Date(du.timestamp).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "unknown";
+  $("#data-updated").innerHTML = `Data updated: ${esc(when)}` + (du.source === "snapshot" ? " (committed snapshot)" : "")
+    + (du.stale ? " " + badge(`STALE: over ${du.stale_after_h} h old`, "amber") : "");
 }
 
 async function loadPlan() {

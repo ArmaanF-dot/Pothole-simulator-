@@ -268,14 +268,15 @@ def data_dates(seg_meta: dict, risk_meta: dict, fresh: dict) -> dict:
 
 
 def run(cfg: dict | None = None, root: Path | None = None, forecast_as_of: str | None = None,
-        scenario: str | None = None, feedback: dict | None = None, write: bool = True, verbose: bool = True) -> dict:
+        scenario: str | None = None, feedback: dict | None = None, write: bool = True, verbose: bool = True,
+        classify=None) -> dict:
     cfg = cfg or I.load_config()
     seg, seg_meta = I.load_segments(cfg, root)
     risk, risk_meta = I.load_risk(cfg, root, seg=seg)
     if scenario:
         from roadsense.prevent.whatif import apply_scenario
         risk = apply_scenario(risk, seg, scenario, cfg, root=root)
-    sc = score(seg, risk, cfg, feedback, confirmed=confirmed_from_fms(I.load_fms(cfg, root), seg, cfg))
+    sc = score(seg, risk, cfg, feedback, confirmed=confirmed_from_fms(I.load_fms(cfg, root), seg, cfg, classify=classify))
     fm = I.load_forecast_meta(cfg, root)
     if risk_meta.get("forecast_retrieved_at"):
         fm = {**fm, "available": True, "retrieved_at": risk_meta["forecast_retrieved_at"]}

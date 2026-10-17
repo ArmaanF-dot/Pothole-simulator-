@@ -53,7 +53,8 @@ def classify(title: str, cfg: dict, client=None) -> tuple[str, str, str | None]:
 
 
 def run(cfg: dict | None = None, city: str = "Brighton", root: Path | None = None, limit: int = 30, client=None,
-        now=None, verbose: bool = True) -> dict:
+        now=None, verbose: bool = True, cache: dict | None = None) -> dict:
+    """cache: {fms_id: (category, method, model)} from an earlier run; those reports are not re-classified."""
     from roadsense.api.cities import CityView
     cfg = cfg or I.load_config()
     t = cfg["triage"]
@@ -64,7 +65,7 @@ def run(cfg: dict | None = None, city: str = "Brighton", root: Path | None = Non
     dup_m, dup_days = t.get("duplicate_radius_m", 15), t.get("duplicate_days", 14)
     out = []
     for r in reps.sort_values("requested").itertuples():          # oldest first, so duplicates merge into the earlier one
-        cat, method, model = classify(str(r.title), cfg, client)
+        cat, method, model = cache[int(r.id)] if cache and int(r.id) in cache else classify(str(r.title), cfg, client)
         j, d = idx.nearest(float(r.lon), float(r.lat))
         on_road = j is not None and d <= t["snap_radius_m"]
         s = seg.iloc[j] if on_road else None

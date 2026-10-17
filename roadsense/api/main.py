@@ -58,7 +58,8 @@ def create_app(service: Service | None = None) -> FastAPI:
                 "bands": {b: int((sc["band"] == b).sum()) for b in ["critical", "high", "prevention", "monitor"]},
                 "official_report_url": s.cfg["coverage"]["official_report_url"],
                 "official_streetlight_url": s.cfg["coverage"]["official_streetlight_url"],
-                "cities": [s.cfg["coverage"]["city"]] + s.other_cities()}
+                "cities": [s.cfg["coverage"]["city"]] + s.other_cities(),
+                "data_updated": s.data_updated()}
 
     @app.get("/segments")
     def segments(ward: str | None = None, band: str | None = None, scenario: str | None = None,
