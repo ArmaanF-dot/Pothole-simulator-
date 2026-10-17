@@ -91,7 +91,9 @@ const LEGEND = { home: ["Critical 90+", "High 70-89", "Prevention 40-69", "Monit
   other: ["Top 1% risk in city", "Top 5%", "Top 10%", "Lower risk"] };
 
 async function loadMap() {
+  const tok = state.mapTok = (state.mapTok || 0) + 1;  // a later loadMap (city switch) makes this one stale
   const gj = await api("/segments?" + qs(otherCity() ? { city: state.city } : { ward: state.ward, scenario: state.scenario }));
+  if (tok !== state.mapTok) return null;
   document.querySelectorAll(".legend b.lg").forEach((el, i) => el.textContent = LEGEND[otherCity() ? "other" : "home"][i]);
   const src = state.map.getSource("segments");
   if (src) src.setData(gj); else {
@@ -112,6 +114,7 @@ async function loadMap() {
     if (!b.isEmpty()) state.map.fitBounds(b, { padding: 20, duration: 0 });
   }
   const open = await api("/reports/open" + (otherCity() ? "?" + qs({ city: state.city }) : ""));
+  if (tok !== state.mapTok) return null;
   const fc = { type: "FeatureCollection", features: open.reports.map((r) => ({ type: "Feature",
     properties: { title: r.title, date: r.reported_at, id: r.id }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } })) };
   if (state.map.getSource("open")) state.map.getSource("open").setData(fc); else {
@@ -129,7 +132,9 @@ async function loadMap() {
 function detail(html) { const d = $("#detail"); d.innerHTML = `<button class="close" onclick="this.parentNode.classList.add('hidden')">×</button>` + html; d.classList.remove("hidden"); }
 
 async function locate(lat, lon) {
+  if (otherCity()) return;  // /locate covers the home city only
   const r = await api(`/locate?lat=${lat}&lon=${lon}`);
+  if (otherCity()) return;
   if (r.status === "out_of_coverage") return detail(`<h3>Outside coverage</h3><p>RoadSense covers Southampton City Council roads only (E06000045).</p>`);
   if (r.status === "national_highways") return detail(`<h3>${esc(r.name)}</h3><p><b>National Highways road, not scored.</b> Motorways (M271, M27) are not council roads.</p>`);
   if (!r.segment_id) return detail(`<h3>No council road here</h3><p>${esc(r.message)}</p>`);
@@ -137,7 +142,11 @@ async function locate(lat, lon) {
 }
 
 async function showCitySegment(id) {
-  const s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ city: state.city }));
+  const c = state.city;
+  let s;
+  try { s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ city: c })); }
+  catch (e) { if (c === state.city) detail(`<h3>Road not available</h3><p class="small muted">${esc(e.message)}</p>`); return; }
+  if (c !== state.city) return;  // the city changed while this was loading
   detail(`<h3>${esc(s.name)}</h3><div class="muted small">${esc(s.segment_id)} · ${esc(s.highway)} · ${esc(s.ward)} · ${esc(s.city)}</div>
     <p><span class="vb ${s.risk_band === "rest" ? "pay" : "must"}">${esc(s.risk_label)}</span> ${badge(s.badge, s.badge.startsWith("100%") ? "real" : "")}</p>
     <div class="kv"><div>Risk band</div><div>${esc(s.risk_label)} <span class="small muted">(rank within ${esc(s.city)})</span></div>
@@ -162,7 +171,10 @@ function focusSegment(id, fly) {
 async function showSegment(id, fly) {
   const found = focusSegment(id, fly);
   if (otherCity()) return showCitySegment(id);
-  const s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ scenario: state.scenario }));
+  let s;
+  try { s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ scenario: state.scenario })); }
+  catch (e) { if (!otherCity()) detail(`<h3>Road not available</h3><p class="small muted">${esc(e.message)}</p>`); return; }
+  if (otherCity()) return;
   if (fly && !found && state.mapReady) state.map.flyTo({ center: [s.lon, s.lat], zoom: 16 });
   if (s.status !== "scored") return detail(`<h3>${esc(s.name)}</h3><p><b>${esc(s.status)}</b></p>`);
   const dd = s.data_dates;
@@ -324,6 +336,11 @@ async function setCity(c) {
   const note = $("#city-note");
   note.classList.toggle("hidden", !other);
   $("#detail").classList.add("hidden");
+  if (state.mapReady) {  // drop the old city's roads and reports at once so they can't be clicked while the new city loads
+    const empty = { type: "FeatureCollection", features: [] };
+    ["segments", "open"].forEach((id) => state.map.getSource(id) && state.map.getSource(id).setData(empty));
+    state.gj = null;
+  }
   if (other) {
     const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
     note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
@@ -333,6 +350,7 @@ async function setCity(c) {
   }
   if (state.mapReady) {
     const gj = await loadMap();
+    if (!gj) return;  // superseded by a later city switch
     const b = new maplibregl.LngLatBounds();
     gj.features.forEach((f) => f.geometry.coordinates.forEach((x) => b.extend(x)));
     if (!b.isEmpty()) state.map.fitBounds(b, { padding: 20, duration: 0 });
