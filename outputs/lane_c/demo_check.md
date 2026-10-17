@@ -1,13 +1,13 @@
 # Demo dry run
 
-_2026-10-17T16:52:19+00:00, `python -m roadsense.api.demo_check`_
+_2026-10-17T17:27:02+00:00, `python -m roadsense.api.demo_check`_
 
 | Step | Result | Notes |
 | --- | --- | --- |
 | 1 ward plan with sources | PASS | 35 rows in Millbrook; 11 sources in footer (0.1 s) |
-| 2 top segment detail | PASS | Millbrook Flyover / Redbridge Road: urgency 40.3, wear 75.9%, 3 reasons, Patch now, schedule resurfacing (0.0 s) |
+| 2 top segment detail | PASS | Millbrook Flyover / Redbridge Road: urgency 40.3, wear 75.9%, 3 reasons, Patch now, schedule resurfacing (0.1 s) |
 | 3 rain_then_frost moves heavy corridors up | PASS | p30 peak +0.110 on top-10% load vs +0.031 elsewhere; bus segments +0.056; method risk_model (0.0 s) |
-| 4 triage real report, merge duplicate, approve | PASS | 'Large pothole' -> pothole via keyword_baseline, segment SOU-2235-01 (0.7 m), duplicate merged, approved (0.8 s) |
+| 4 triage real report, merge duplicate, approve | PASS | 'Large pothole' -> pothole via keyword_baseline, segment SOU-2235-01 (0.7 m), duplicate merged, approved (1.0 s) |
 | 5 crew outcome re-scores segment | PASS | SOU-2235-01: urgency 70.0 -> 100.0 (0.3 s) |
 | 6 streetlights due and dark | PASS | 3695 lamps due in 90 days, 65 currently dark (0.0 s) |
 | F1 outside coverage / National Highways | PASS | London -> out_of_coverage; Nursling Spur Motorway -> National Highways, not scored (0.0 s) |

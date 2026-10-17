@@ -95,9 +95,14 @@ feedback:                                  # crew outcome -> immediate re-score 
   none_p30_multiplier: 0.7
 
 triage:
-  model: gemini-3.8-flash                  # 2.5-flash returns 404 for new keys (17 Oct 2026); check the live model list
+  model: gemini-3.8-flash                  # first of `models`; kept for older readers
+  # Fallback order: a 429/500/503/504 or a call slower than call_timeout_s moves to the next model
+  # (17 Oct 2026: 3.8-flash gave 503 "high demand" and 504s, 3-flash-preview answered in about 1 s).
+  models: [gemini-3.8-flash, gemini-3-flash-preview, gemini-flash-latest]
+  call_timeout_s: 10
+  mode: fast                               # fast = code runs the lookups, Gemini drafts in 1 call; agent = up to max_turns
   max_turns: 6
-  min_interval_s: 13                       # free tier allows 5 requests a minute
+  min_interval_s: 13                       # free tier allows 5 requests a minute (per model)
   max_retries: 6
   snap_radius_m: 30
   lamp_radius_m: 25

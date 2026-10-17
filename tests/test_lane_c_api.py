@@ -18,16 +18,25 @@ from roadsense.prevent import inputs as I
 from roadsense.prevent.mock import mock_world
 
 
+class _Busy(Exception):
+    code = 503
+
+
 class FakeGemini:
     """Plays the function-calling loop: lookup -> duplicates -> risk -> draft_work_order."""
 
-    def __init__(self, category="pothole"):
-        self.category, self.calls = category, []
+    def __init__(self, category="pothole", fail_models=()):
+        self.category, self.calls, self.fail_models, self.models_seen = category, [], set(fail_models), []
         self.models = self
 
     def generate_content(self, model, contents, config):
         assert config.tools and config.tool_config.function_calling_config.mode == "ANY"
+        self.models_seen.append(model)
+        if model in self.fail_models:
+            raise _Busy()
         self.calls.append(contents)
+        if config.tool_config.function_calling_config.allowed_function_names == ["draft_work_order"]:
+            self.calls = [None, None, None] + self.calls  # fast mode: answer with the work order straight away
         text = contents[0].parts[0].text
         lat = float(text.split("lat ")[1].split(",")[0])
         lon = float(text.split("lon ")[1].split(".\n")[0])
@@ -99,7 +108,10 @@ def test_end_to_end_triage_attach_approve_outcome_rescore(root):
     # 1. triage a real report with Gemini function calling
     wo = app.post("/reports", json={"fms_id": 111}).json()
     assert wo["method"] == "gemini" and wo["category"] == "pothole"
-    assert [c for c in wo["tool_trace"]] == ["lookup_location", "find_duplicates", "get_risk", "draft_work_order"]
+    # fast mode: the code runs the three lookups, Gemini answers in one call
+    assert wo["tool_trace"] == ["prefetch:lookup_location", "prefetch:find_duplicates", "prefetch:get_risk",
+                                "draft_work_order"]
+    assert wo["tokens"]["calls"] == 1 and wo["model"] == "gemini-3.8-flash"
     # 2. attached to its segment by code, never by the model's invented id
     assert wo["segment_id"] == "X003-004" and wo["segment_id"] != "INVENTED"
     assert wo["status"] == "pending_approval" and wo["urgency"] >= 70
@@ -109,6 +121,7 @@ def test_end_to_end_triage_attach_approve_outcome_rescore(root):
     fake.reset()
     dup = app.post("/reports", json={"fms_id": 112}).json()
     assert dup["status"] == "merged" and dup["merged_into"] == "fms-111"
+    assert dup["method"].startswith("merged into fms-111") and dup["category"] == "pothole" and fake.calls == []
     # 4. officer approves
     before = app.get("/segments/X003-004").json()
     r = app.post("/workorders/fms-111/approve", json={"officer": "test"}).json()
@@ -126,7 +139,7 @@ def test_end_to_end_triage_attach_approve_outcome_rescore(root):
     assert app.get("/triage/queue").json()[0]["status"] == "inspected"
     # tokens were logged for the cost report
     log = C.read_log(svc.cfg, root)
-    assert len(log) == 2 and (log["kind"] == "triage").all()
+    assert len(log) == 1 and (log["kind"] == "triage").all()  # the duplicate made no Gemini call
     labels = pd.read_csv(root / "outputs" / "lane_c" / "outcome_labels.csv")
     assert labels["segment_id"].tolist() == ["X003-004"]
 
@@ -244,3 +257,30 @@ def test_warm_precomputes_scenarios(root):
     w = svc.warm()
     assert set(w["warmed_scenarios"]) == {"rain_then_frost", "wet_week", "cold_snap"}
     assert svc.plan(scenario="cold_snap")["scenario_method"] == "sensitivity_surrogate"
+
+
+def test_agent_mode_runs_the_tool_loop(root):
+    cfg = I.load_config()
+    cfg["triage"]["mode"] = "agent"
+    fake = FakeGemini()
+    wo = Service(cfg=cfg, root=root, client=fake).triage_report({"fms_id": 111})
+    assert wo["tool_trace"] == ["lookup_location", "find_duplicates", "get_risk", "draft_work_order"]
+    assert wo["tokens"]["calls"] == 4
+
+
+def test_busy_model_falls_back_to_next(root):
+    TR._model_pos[0] = 0
+    fake = FakeGemini(fail_models={"gemini-3.8-flash"})
+    wo = Service(root=root, client=fake).triage_report({"fms_id": 111})
+    assert wo["method"] == "gemini" and wo["model"] == "gemini-3-flash-preview"
+    assert fake.models_seen[:2] == ["gemini-3.8-flash", "gemini-3-flash-preview"]
+    log = C.read_log(I.load_config(), root)
+    assert log.iloc[-1]["model"] == "gemini-3-flash-preview"
+    TR._model_pos[0] = 0
+
+
+def test_all_models_busy_falls_back_to_keywords(root):
+    TR._model_pos[0] = 0
+    fake = FakeGemini(fail_models=set(TR.models(I.load_config())))
+    wo = Service(root=root, client=fake).triage_report({"fms_id": 111})
+    assert wo["method"].startswith("keyword_baseline (gemini unavailable") and wo["category"] == "pothole"

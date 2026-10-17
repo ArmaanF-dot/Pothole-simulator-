@@ -63,3 +63,4 @@ form#triage-form select { max-width: 100%; }
 .vb.pay { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
 .vb.loss { background: #fbe9e7; color: #8d2a0b; border: 1px solid #ffab91; }
 .vb.must { background: #fff3e0; color: #8a4b00; border: 1px solid #ffcc80; }
+.vb.sim { background: #f3e5f5; color: #4a148c; border: 1px solid #ce93d8; }

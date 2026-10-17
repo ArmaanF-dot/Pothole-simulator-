@@ -1,6 +1,6 @@
 # Running cost per officer
 
-_Generated 2026-10-17T15:11:13+00:00 by `python -m roadsense.agent.cost` from the token log (`outputs/lane_c/token_log.jsonl`). Re-run it after any live Gemini run and this page updates._
+_Generated 2026-10-17T17:27:47+00:00 by `python -m roadsense.agent.cost` from the token log (`outputs/lane_c/token_log.jsonl`). Re-run it after any live Gemini run and this page updates._
 
 ## Measured
 
@@ -27,9 +27,13 @@ with P_in = $0.3, P_out = $2.5 per million tokens, FX = £0.75 per $, reports_pe
 
 £0.00110 per report x 300 / 4 = **£0.08 LLM** + £6.25 hosting = **£6.33 per officer per month** (from 1 measured full triage run(s); the token count is measured, the price and volumes are assumptions).
 
+## Plan value horizon (avoided_per_gbp)
+
+Expected reactive repairs avoided over each treatment's service life, x £87.80, per £ of treatment. Service lives (assumptions, typical UK ranges): crack sealing 3 years, surface dressing 8 years, patch 5 years, resurface 15 years, permanent repair 5 years. Hazard is held at today's level, no discounting. A confirmed pothole is costed as one permanent repair: £87.80 reactive avoided / £56.94 planned = ×1.54 (ALARM 2025).
+
 ## Not measured (config assumptions)
 
-- **Price:** $0.3/M input and $2.5/M output is the Gemini 2.5 Flash paid-tier list price. The logged model is `gemini-3.8-flash`; its price has not been checked, so confirm on ai.google.dev/pricing before quoting the £ figure.
+- **Price:** $0.3/M input and $2.5/M output is the Gemini 2.5 Flash paid-tier list price, applied to every model. Triage falls back through `gemini-3.8-flash`, `gemini-3-flash-preview`, `gemini-flash-latest`; the table shows which model answered each call. None of their prices has been checked, so confirm each on ai.google.dev/pricing before quoting the £ figure.
 - **Volume:** 300 reports a month city-wide (about 3,600 Southampton pothole repairs a year, FOI 2021-2025) shared by 4 officers. Both are assumptions.
 - **Hosting:** £25 a month for one small VM running the API and page. Assumption.
 - **The weekly plan uses no LLM**, so it adds no token cost.

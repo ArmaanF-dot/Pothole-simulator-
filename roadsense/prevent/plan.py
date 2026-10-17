@@ -53,7 +53,7 @@ def confirmed_from_fms(fms: pd.DataFrame, seg: pd.DataFrame, cfg: dict, classify
     """Confirmed potholes: open FixMyStreet reports snapped to a council segment that triage classifies
     as a road defect. Open = status open and reported within triage.open_report_days; snap within
     triage.snap_radius_m. classify(row) -> (category, "gemini" | "keyword"); keyword rules by default.
-    Returns {segment_id: {"report": "fms-<id>", "by": "gemini" | "keyword"}}.
+    Returns {segment_id: {"source_id": "<FixMyStreet request id>", "by": "gemini" | "keyword"}}.
     """
     if fms is None or not len(fms):
         return {}
@@ -73,7 +73,7 @@ def confirmed_from_fms(fms: pd.DataFrame, seg: pd.DataFrame, cfg: dict, classify
             continue
         category, by = classify(r)
         if category == "pothole":
-            out.setdefault(s.iloc[j]["segment_id"], {"report": f"fms-{int(r.id)}", "by": by})
+            out.setdefault(s.iloc[j]["segment_id"], {"source_id": str(int(r.id)), "by": by})
     return out
 
 
@@ -132,12 +132,49 @@ def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | Non
     df["status"] = np.where(nh, "National Highways road, not scored",
                             np.where(df["p30"].isna(), "no risk score", "scored"))
     # Worth treating (schemas.md section 9): pays back over the treatment's life, or a confirmed pothole
+    # schemas.md section 9: confirmed_by "" | keyword | gemini | crew (precedence crew > gemini > keyword),
+    # confirmed_source_id (FixMyStreet request id, or the crew inspection id), confirmed_is_synthetic
     confirmed = confirmed or {}
-    df["confirmed_report"] = df["segment_id"].map(lambda s: confirmed.get(s, {}).get("report"))
-    df["confirmed_by"] = df["segment_id"].map(lambda s: confirmed.get(s, {}).get("by"))
-    df.loc[df["confirmed_by"].isna() & df["confirmed_open"], "confirmed_by"] = "crew"
-    df["confirmed_pothole"] = df["scored"] & df["confirmed_by"].notna()
-    df["open_fms_report"] = df["open_fms_report"] | df["confirmed_report"].notna()
+
+    def pick(sid, crew_open):
+        fb = feedback.get(sid, {})
+        if crew_open:
+            return {"by": "crew", "source_id": fb.get("crew_outcome_id") or f"feedback:{sid}",
+                    "is_synthetic": bool(fb.get("crew_is_synthetic", False))}
+        best = dict(confirmed.get(sid, {}))
+        return best if best.get("by") in ("keyword", "gemini") else {}
+
+    picks = [pick(s, o) for s, o in zip(df["segment_id"], df["confirmed_open"])]
+    df["confirmed_by"] = [p.get("by", "") for p in picks]
+    df["confirmed_source_id"] = [str(p.get("source_id", "")) if p.get("by") else "" for p in picks]
+    df["confirmed_is_synthetic"] = [bool(p.get("is_synthetic", False)) for p in picks]
+    df.loc[~df["scored"], ["confirmed_by", "confirmed_source_id"]] = ""
+    df.loc[~df["scored"], "confirmed_is_synthetic"] = False
+    df["confirmed_pothole"] = df["scored"] & (df["confirmed_by"] != "")
+    df["open_fms_report"] = df["open_fms_report"] | df["confirmed_by"].isin(["keyword", "gemini"])
+    # A confirmed pothole is a statutory repair: the headline row is a permanent repair of the reported defect
+    # (planned £56.94 vs reactive £87.80, ALARM 2025), held at least in the High band. The segment's own
+    # preventive treatment is kept as a separate suggestion.
+    c = df["confirmed_pothole"]
+    for col in ["treatment", "treatment_label", "treatment_cost_gbp", "reactive_cost_avoided_gbp", "avoided_per_gbp"]:
+        df["preventive_" + col] = df[col].where(c)
+    costs = cfg["costs"]
+    df.loc[c, "treatment"] = "permanent_repair"
+    df.loc[c, "treatment_label"] = cfg["treatments"]["label"]["permanent_repair"]
+    df.loc[c, "treatment_cost_gbp"] = costs["planned_repair"]
+    df.loc[c, "expected_repairs_avoided"] = 1.0
+    df.loc[c, "reactive_cost_avoided_gbp"] = costs["reactive_repair"]
+    df.loc[c, "avoided_per_gbp"] = round(costs["reactive_repair"] / costs["planned_repair"], 4)
+    hi = float(cfg["urgency"]["bands"][cfg["triage"]["report_floor_band"]])
+    for u, b in [("urgency", "band"), ("urgency_peak", "band_peak")]:
+        df.loc[c, u] = np.maximum(df.loc[c, u], hi)
+        df.loc[c, b] = U.band(df.loc[c, u], cfg)
+    df.loc[c, "reason_3"] = df.loc[c, "reason_2"]
+    df.loc[c, "reason_2"] = df.loc[c, "reason_1"]
+    df.loc[c, "reason_1"] = np.where(df.loc[c, "confirmed_by"] == "crew",
+                                     np.where(df.loc[c, "confirmed_is_synthetic"], "pothole found by simulated crew inspection",
+                                              "pothole confirmed by crew inspection"),
+                                     "open FixMyStreet report, confirmed by " + df.loc[c, "confirmed_by"].fillna(""))
     df["pays_back"] = df["scored"] & (df["avoided_per_gbp"] >= cfg["plan"].get("pays_back_min", 1.0))
     candidate = df["scored"] & (df["band"] == "prevention") & (df["p30_rise"] > cfg["plan"]["min_rise"])
     df["worth_treating"] = (candidate & df["pays_back"]) | df["confirmed_pothole"]
@@ -163,20 +200,25 @@ def build_worth(scored: pd.DataFrame, cfg: dict, ward: str | None = None, data_d
 
 
 def worth_summary(worth: pd.DataFrame) -> dict:
-    n_pay = int(worth["pays_back"].sum()) if len(worth) else 0
-    n_conf = int(worth["confirmed_pothole"].sum()) if len(worth) else 0
+    n_pay = int((worth["pays_back"] & ~worth["confirmed_pothole"]).sum()) if len(worth) else 0
+    sim = (worth["confirmed_pothole"] & worth["confirmed_is_synthetic"]) if len(worth) else pd.Series(dtype=bool)
+    n_conf = int((worth["confirmed_pothole"] & ~sim).sum()) if len(worth) else 0
+    n_sim = int(sim.sum()) if len(worth) else 0
     cost = float(worth["cost_planned_gbp"].sum()) if len(worth) else 0.0
     avoided = float(worth["cost_reactive_avoided_gbp"].sum()) if len(worth) else 0.0
-    return {"pays_back": n_pay, "confirmed_potholes": n_conf, "treatment_gbp": round(cost, 2),
-            "reactive_avoided_gbp": round(avoided, 2),
-            "header": f"{n_pay} roads pay back · {n_conf} confirmed potholes · £{cost:,.0f} treatment · "
+    sim_txt = f" · {n_sim} crew-reported (simulated)" if n_sim else ""
+    return {"pays_back": n_pay, "confirmed_potholes": n_conf, "simulated_crew_reports": n_sim,
+            "treatment_gbp": round(cost, 2), "reactive_avoided_gbp": round(avoided, 2),
+            "header": f"{n_pay} roads pay back · {n_conf} confirmed potholes{sim_txt} · £{cost:,.0f} treatment · "
                       f"£{avoided:,.0f} reactive cost avoided"}
 
 
 def badge(r: dict) -> str:
     x = r["avoided_per_gbp"]
     ratio = f"×{x:.2f}" if x >= 0.1 or x == 0 else f"×{x:.2g}"
-    if r.get("confirmed_pothole") and not r.get("pays_back"):
+    if r.get("confirmed_pothole") and r.get("confirmed_is_synthetic"):
+        return "Simulated crew report"
+    if r.get("confirmed_pothole"):
         return f"Confirmed: must fix {ratio}"
     return f"Pays back {ratio}" if r.get("pays_back") else f"Loss maker {ratio}"
 
@@ -193,6 +235,11 @@ def _decorate(p: pd.DataFrame, cfg: dict, data_dates: dict | None) -> pd.DataFra
          f"x £{c['reactive_repair']:.2f} = £{r['reactive_cost_avoided_gbp']:.2f} for £{r['treatment_cost_gbp']:.2f} "
          f"(treatment £/m² is an assumption; planned repair £{c['planned_repair']:.2f} vs reactive £{c['reactive_repair']:.2f}, {c['source']})")
         for r in p.to_dict("records")]
+    if "confirmed_pothole" in p and p["confirmed_pothole"].any():
+        m = p["confirmed_pothole"].values
+        p.loc[m, "cost_logic"] = (f"Confirmed pothole: permanent repair now, planned £{c['planned_repair']:.2f} instead of a "
+                                  f"reactive £{c['reactive_repair']:.2f} later ({c['source']}) = ×"
+                                  f"{c['reactive_repair'] / c['planned_repair']:.2f}. Statutory repair, not optional.")
     p["cost_planned_gbp"] = p["treatment_cost_gbp"]
     p["cost_reactive_avoided_gbp"] = p["reactive_cost_avoided_gbp"]
     p["data_dates"] = json.dumps(data_dates or {})
@@ -203,11 +250,14 @@ def _decorate(p: pd.DataFrame, cfg: dict, data_dates: dict | None) -> pd.DataFra
 # contract section 9 first (docs/contract_outputs.md), then lane C extras the page shows
 CONTRACT_COLS = ["rank", "segment_id", "ward", "name", "ref", "band", "urgency", "p30", "wear", "treatment",
                  "reason_1", "reason_2", "reason_3", "cost_planned_gbp", "cost_reactive_avoided_gbp", "open_fms_report",
-                 "uses_synthetic", "data_dates", "pays_back", "confirmed_pothole", "confirmed_by", "worth_treating"]
+                 "uses_synthetic", "data_dates", "pays_back", "confirmed_pothole", "confirmed_by", "confirmed_source_id",
+                 "confirmed_is_synthetic", "worth_treating"]
 PLAN_COLS = CONTRACT_COLS + ["highway", "p30_peak", "p30_rise", "consequence", "consequence_text", "treatment_label",
                              "avoided_per_gbp", "reasons", "cost_logic", "esal_day", "load_confidence", "traffic_note",
                              "weather_source", "model_version", "as_of", "labels_synthetic", "wear_synthetic",
-                             "inputs_mock", "p30_w0", "value_badge", "confirmed_report"]
+                             "inputs_mock", "p30_w0", "value_badge", "preventive_treatment",
+                             "preventive_treatment_label", "preventive_treatment_cost_gbp",
+                             "preventive_reactive_cost_avoided_gbp", "preventive_avoided_per_gbp"]
 
 
 def data_dates(seg_meta: dict, risk_meta: dict, fresh: dict) -> dict:
