@@ -87,3 +87,41 @@ def test_run_end_to_end(world, tmp_path):
 def test_waits_for_segments(tmp_path):
     res = real_risk.run(small_config(), root=tmp_path, verbose=False)
     assert "Waiting for lane A" in res["status"]
+
+
+def _tiny_test_set():
+    rng = np.random.default_rng(5)
+    rows = []
+    for y in (2018, 2019):
+        for i in range(60):
+            rows.append({"segment_id": f"S{i:03d}", "year": y, "length_m": float(rng.uniform(20, 200)),
+                         "n_reports": int(rng.poisson(0.4 + (i < 8) * 2))})
+    df = pd.DataFrame(rows)
+    hot = (df["segment_id"].str[1:].astype(int) < 8).astype(float)
+    scores = {"model": hot + rng.random(len(df)) * 0.5, "last_year_reports": rng.random(len(df)),
+              "load_x_past_reports": rng.random(len(df))}
+    return df, scores
+
+
+def test_paired_bootstrap_reproducible_with_seed():
+    df, scores = _tiny_test_set()
+    a = real_risk.paired_bootstrap(df, scores, n=200, seed=2026)
+    b = real_risk.paired_bootstrap(df, scores, n=200, seed=2026)
+    c = real_risk.paired_bootstrap(df, scores, n=200, seed=7)
+    assert a == b
+    assert a["model"]["ci95"] != c["model"]["ci95"]
+    lo, hi = a["model"]["ci95"]
+    assert lo <= a["model"]["capture_top10_length"] <= hi
+    assert a["_n"] == {"reports": int(df["n_reports"].sum()), "segments": 60, "rows": 120, "years": [2018, 2019],
+                       "resamples": 200, "seed": 2026}
+    assert 0 <= a["_diff_model_minus_last_year"]["share_model_ahead"] <= 1
+    assert a["_diff_model_minus_last_year"]["ci95"][0] > 0          # the planted hot spots are found
+
+
+def test_summary_sentence_says_matches_when_interval_spans_zero():
+    r = {"model": {"capture_top10_length": 0.38, "ci95": [0.30, 0.45]},
+         "last_year_reports": {"capture_top10_length": 0.34, "ci95": [0.25, 0.39]},
+         "_diff_model_minus_last_year": {"point": 0.04, "ci95": [-0.03, 0.11], "share_model_ahead": 0.85},
+         "_n": {"reports": 381}}
+    s = real_risk.summary_sentence("Southampton", r, "test years")
+    assert "matches the baseline rather than beats it" in s and "85%" in s

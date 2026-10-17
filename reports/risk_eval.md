@@ -87,3 +87,38 @@ Fitted on 1,523 segments resurfaced inside the log window (630 with a first poth
 
 - Model trained on synthetic plus real FixMyStreet labels: skipped, too few dated Southampton reports overlap the feature window.
 - Leave-one-city-out: waits on lane A's port-city data.
+
+<!-- real-label-eval:start -->
+## Real-label evaluation with uncertainty (FixMyStreet, real data)
+
+Model trained on real FixMyStreet labels (`data\processed\fms_snapped.csv`), lane-a-data commit 2a2bbac, run read-only (lane A files not committed here). Score = share of a year's reports that land on the top 10% of road length, averaged over the test years. Ranges: paired cluster bootstrap that resamples test **segments** with replacement (1,000 resamples, seed 2026) and scores every method on the same resample. FixMyStreet counts measure reporting, not true pothole rates.
+
+### Southampton, test years
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 38.8% | 31.9% to 45.8% |
+| last year reports | 33.7% | 24.5% to 38.9% |
+| load x past reports | 19.8% | 14.5% to 25.2% |
+| model minus last-year (paired) | 5.1% | 1.4% to 13.0% |
+
+n = 381 test reports on 8,145 test segments (2018, 2019). Model ahead of the last-year baseline in 99% of 1,000 resamples (seed 2026).
+
+Southampton, test years: model 39% (32%-46%) vs last-year baseline 34% (24%-39%); model ahead in 99% of resamples. The difference 5% (95% 1% to 13%) excludes 0, so the model beats the baseline.
+
+### Southampton, frozen 2026 check (Jan to Oct)
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 15.2% | 4.0% to 29.7% |
+| last year reports | 12.1% | 2.8% to 26.9% |
+| load x past reports | 21.2% | 8.3% to 40.7% |
+| model minus last-year (paired) | 3.0% | -12.1% to 15.8% |
+
+n = 33 test reports on 8,145 test segments (2026). Model ahead of the last-year baseline in 51% of 1,000 resamples (seed 2026).
+
+Southampton, frozen 2026 check (Jan to Oct): model 15% (4%-30%) vs last-year baseline 12% (3%-27%); model ahead in 51% of resamples. The difference 3% (95% -12% to 16%) includes 0, so the model matches the baseline rather than beats it. Only 33 reports, so the interval is wide.
+
+Brighton 2023 to 2025: waiting for lane A's Brighton labels. The same code runs once they land.
+
+<!-- real-label-eval:end -->

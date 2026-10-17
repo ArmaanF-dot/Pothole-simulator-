@@ -195,17 +195,6 @@ def capture_top_length(df: pd.DataFrame, score: np.ndarray, frac: float = TOP_LE
     return float(df["n_reports"].values[o][take].sum() / total)
 
 
-def bootstrap_capture(df, score, n=300, seed=0):
-    rng = np.random.default_rng(seed)
-    score = np.asarray(score, float)
-    vals = []
-    for _ in range(n):
-        i = rng.integers(0, len(df), len(df))
-        vals.append(capture_top_length(df.iloc[i], score[i]))
-    v = np.array([x for x in vals if x == x])
-    return (float(np.percentile(v, 5)), float(np.percentile(v, 95))) if len(v) else (float("nan"), float("nan"))
-
-
 def baseline_scores(df: pd.DataFrame) -> dict:
     last = df["rep_prev1"].fillna(0).values
     load = np.expm1(df["log_esal_day"].fillna(df["log_esal_day"].median() if df["log_esal_day"].notna().any() else 0)).values
@@ -231,28 +220,130 @@ def fit(train: pd.DataFrame, cfg: dict):
     return m
 
 
-def evaluate(model, test: pd.DataFrame) -> dict:
-    """Mean capture over the test city-years, for the model and both baselines."""
+SCORERS = ["model", "last_year_reports", "load_x_past_reports"]
+BOOT_N, BOOT_SEED = 1000, 2026
+
+
+def _mean_capture(df: pd.DataFrame, scores: dict, rows_by_year: list[np.ndarray]) -> dict:
+    """Mean over test years of the top-10%-of-length capture, for each scorer, on the same rows."""
     out = {}
-    scorers = {"model": model.predict_proba(test[FEATURES])[:, 1], **baseline_scores(test)}
-    for name, s in scorers.items():
-        caps, lo, hi = [], [], []
-        for (_, _), idx in test.groupby(["city", "year"]).groups.items():
-            ii = test.index.get_indexer(idx)
-            sub = test.iloc[ii]
-            if sub["n_reports"].sum() == 0:
-                continue
-            caps.append(capture_top_length(sub, s[ii]))
-            b = bootstrap_capture(sub, s[ii], n=200)
-            lo.append(b[0]); hi.append(b[1])
-        out[name] = {"capture_top10_length": float(np.mean(caps)) if caps else float("nan"),
-                     "range_90": [float(np.mean(lo)) if lo else float("nan"), float(np.mean(hi)) if hi else float("nan")],
-                     "city_years": len(caps)}
-    out["_n"] = {"rows": int(len(test)), "reports": int(test["n_reports"].sum())}
+    for name, s in scores.items():
+        caps = [capture_top_length(df.iloc[ii], s[ii]) for ii in rows_by_year if len(ii)]
+        caps = [c for c in caps if c == c]
+        out[name] = float(np.mean(caps)) if caps else float("nan")
     return out
 
 
-def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True, inputs: dict | None = None) -> dict:
+def paired_bootstrap(test: pd.DataFrame, scores: dict, n: int = BOOT_N, seed: int = BOOT_SEED) -> dict:
+    """Paired cluster bootstrap over test segments.
+
+    Each resample draws test segments with replacement (keeping all of a segment's test-year rows,
+    because reports cluster on segments) and scores every method on that same resample.
+    Returns the point estimate and 95% percentile interval per method, plus the paired
+    difference model minus last-year baseline, its interval, and the share of resamples where
+    the model is ahead.
+    """
+    test = test.reset_index(drop=True)
+    scores = {k: np.asarray(v, float) for k, v in scores.items()}
+    years = sorted(test["year"].unique())
+    yr = test["year"].values
+    point = _mean_capture(test, scores, [np.flatnonzero(yr == y) for y in years])
+    seg_codes, seg_ids = pd.factorize(test["segment_id"])
+    order = np.argsort(seg_codes, kind="stable")
+    bounds = np.searchsorted(seg_codes[order], np.arange(len(seg_ids) + 1))
+    rows_of = [order[bounds[i]:bounds[i + 1]] for i in range(len(seg_ids))]
+    rng = np.random.default_rng(seed)
+    draws = {k: np.empty(n) for k in scores}
+    for b in range(n):
+        pick = rng.integers(0, len(seg_ids), len(seg_ids))
+        idx = np.concatenate([rows_of[i] for i in pick])
+        sub = test.iloc[idx].reset_index(drop=True)
+        yb = yr[idx]
+        m = _mean_capture(sub, {k: v[idx] for k, v in scores.items()}, [np.flatnonzero(yb == y) for y in years])
+        for k in scores:
+            draws[k][b] = m[k]
+
+    def ci(v):
+        return [float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))]
+
+    out = {k: {"capture_top10_length": point[k], "ci95": ci(draws[k])} for k in scores}
+    d = draws["model"] - draws["last_year_reports"]
+    out["_diff_model_minus_last_year"] = {"point": point["model"] - point["last_year_reports"], "ci95": ci(d),
+                                          "share_model_ahead": float(np.mean(d > 0))}
+    out["_n"] = {"reports": int(test["n_reports"].sum()), "segments": int(len(seg_ids)), "rows": int(len(test)),
+                 "years": [int(y) for y in years], "resamples": n, "seed": seed}
+    return out
+
+
+def evaluate(model, test: pd.DataFrame, n: int = BOOT_N, seed: int = BOOT_SEED) -> dict:
+    test = test.reset_index(drop=True)
+    scores = {"model": model.predict_proba(test[FEATURES])[:, 1], **baseline_scores(test)}
+    return paired_bootstrap(test, scores, n=n, seed=seed)
+
+
+def _pct(x, dp=0):
+    return f"{100 * x:.{dp}f}%"
+
+
+def summary_sentence(city: str, r: dict, label: str) -> str:
+    m, b, d = r["model"], r["last_year_reports"], r["_diff_model_minus_last_year"]
+    s = (f"{city}, {label}: model {_pct(m['capture_top10_length'])} ({_pct(m['ci95'][0])}-{_pct(m['ci95'][1])}) vs last-year "
+         f"baseline {_pct(b['capture_top10_length'])} ({_pct(b['ci95'][0])}-{_pct(b['ci95'][1])}); model ahead in "
+         f"{_pct(d['share_model_ahead'])} of resamples. ")
+    gap = f"difference {_pct(d['point'])} (95% {_pct(d['ci95'][0])} to {_pct(d['ci95'][1])})"
+    if d["ci95"][0] > 0:
+        s += f"The {gap} excludes 0, so the model beats the baseline."
+    else:
+        s += f"The {gap} includes 0, so the model matches the baseline rather than beats it."
+    if r["_n"]["reports"] < 100:
+        s += f" Only {r['_n']['reports']} reports, so the interval is wide."
+    return s
+
+
+def results_table(r: dict) -> list[str]:
+    L = ["| Method | Capture, top 10% of road length | 95% interval |", "|---|---|---|"]
+    for k in SCORERS:
+        if k in r:
+            L.append(f"| {k.replace('_', ' ')} | {_pct(r[k]['capture_top10_length'], 1)} | "
+                     f"{_pct(r[k]['ci95'][0], 1)} to {_pct(r[k]['ci95'][1], 1)} |")
+    d = r["_diff_model_minus_last_year"]
+    L.append(f"| model minus last-year (paired) | {_pct(d['point'], 1)} | {_pct(d['ci95'][0], 1)} to {_pct(d['ci95'][1], 1)} |")
+    n = r["_n"]
+    L += ["", f"n = {n['reports']:,} test reports on {n['segments']:,} test segments ({', '.join(map(str, n['years']))}). "
+          f"Model ahead of the last-year baseline in {_pct(d['share_model_ahead'])} of {n['resamples']:,} resamples (seed {n['seed']}).", ""]
+    return L
+
+
+SECTION_START, SECTION_END = "<!-- real-label-eval:start -->", "<!-- real-label-eval:end -->"
+
+
+def risk_eval_section(res: dict, src: str, provenance: str = "") -> str:
+    L = [SECTION_START, "## Real-label evaluation with uncertainty (FixMyStreet, real data)", "",
+         f"Model trained on real FixMyStreet labels (`{src}`){provenance}. Score = share of a year's reports that land on "
+         "the top 10% of road length, averaged over the test years. Ranges: paired cluster bootstrap that resamples test "
+         f"**segments** with replacement ({BOOT_N:,} resamples, seed {BOOT_SEED}) and scores every method on the same "
+         "resample. FixMyStreet counts measure reporting, not true pothole rates.", ""]
+    blocks = [(c, r, "test years") for c, r in res["cities"].items()]
+    blocks += [(c, r, "frozen 2026 check (Jan to Oct)") for c, r in (res.get("frozen_2026") or {}).items()]
+    for c, r, label in blocks:
+        L += [f"### {c}, {label}", ""] + results_table(r) + [summary_sentence(c, r, label), ""]
+    if "Brighton" not in res["cities"]:
+        L += ["Brighton 2023 to 2025: waiting for lane A's Brighton labels. The same code runs once they land.", ""]
+    L.append(SECTION_END)
+    return "\n".join(L)
+
+
+def update_risk_eval(path: Path, section: str):
+    txt = path.read_text(encoding="utf-8") if path.exists() else "# Risk model evaluation\n"
+    if SECTION_START in txt and SECTION_END in txt:
+        txt = txt[:txt.index(SECTION_START)] + section + txt[txt.index(SECTION_END) + len(SECTION_END):]
+    else:
+        txt = txt.rstrip() + "\n\n" + section + "\n"
+    path.write_text(txt, encoding="utf-8")
+
+
+def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True, inputs: dict | None = None,
+        report_root: Path | None = None, provenance: str = "") -> dict:
     cfg = cfg or load_config()
     root = Path(root or ROOT)
     cfg_a = lane_a_config(root)
@@ -288,12 +379,20 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True,
     if len(fz) and fz["n_reports"].sum():
         full = fit(usable[usable["split"].isin(["train", "test"])], cfg)
         res["frozen_2026"] = {c: evaluate(full, g.reset_index(drop=True)) for c, g in fz.groupby("city")}
-    md = resolve(cfg, "models_dir", root)
+    out_root = Path(report_root) if report_root else root
+    md = resolve(cfg, "models_dir", out_root)
     md.mkdir(parents=True, exist_ok=True)
     (md / "real_risk_eval.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
-    write_report(rd / "real_risk_eval.md", res, table, radius, inp)
+    out_rd = resolve(cfg, "reports_dir", out_root)
+    out_rd.mkdir(parents=True, exist_ok=True)
+    write_report(out_rd / "real_risk_eval.md", res, table, radius, inp)
+    src = inp["reports"].attrs.get("path") if inp.get("reports") is not None else "data/processed/labels_segment_year.csv"
+    update_risk_eval(out_rd / "risk_eval.md", risk_eval_section(res, src, provenance))
     if verbose:
-        print(json.dumps({c: {k: v["capture_top10_length"] for k, v in r.items() if not k.startswith("_")} for c, r in res["cities"].items()}, indent=1))
+        for c, r in res["cities"].items():
+            print(summary_sentence(c, r, "test years"))
+        for c, r in (res.get("frozen_2026") or {}).items():
+            print(summary_sentence(c, r, "frozen 2026"))
     return res
 
 
@@ -304,15 +403,10 @@ def write_report(path: Path, res: dict, table: pd.DataFrame, radius, inp):
          f"_Generated {now} by `python -m roadsense.models.real_risk` ({MODEL_VERSION})._", "",
          f"Labels: real FixMyStreet road-surface reports (`{src}`), snapped to main-road segments within {radius} m. "
          "Counts measure reporting, not pothole rates; scores rank segments within one city and year.", "",
-         "Score: share of that year's reports on the top 10% of road length (mean over test city-years, 90% bootstrap range).", ""]
+         "Score: share of that year's reports on the top 10% of road length (mean over test years, 95% paired segment bootstrap).", ""]
 
     def table_md(r):
-        rows = ["| Scorer | Capture, top 10% of length | 90% range |", "|---|---|---|"]
-        for name in ["model", "last_year_reports", "load_x_past_reports"]:
-            if name in r:
-                v = r[name]
-                rows.append(f"| {name.replace('_', ' ')} | {v['capture_top10_length']:.3f} | {v['range_90'][0]:.3f} to {v['range_90'][1]:.3f} |")
-        return rows + [f"", f"{r['_n']['reports']:,} reports on {r['_n']['rows']:,} segment-years.", ""]
+        return results_table(r)
 
     for title, block in [("Test years per city (pooled model)", res["cities"]), ("Leave-one-city-out", res["loco"]),
                          ("Frozen 2026 check (Jan to Oct, small)", res["frozen_2026"] or {})]:
@@ -326,8 +420,11 @@ def write_report(path: Path, res: dict, table: pd.DataFrame, radius, inp):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--root", default=None)
-    run(root=ap.parse_args().root)
+    ap.add_argument("--root", default=None, help="folder holding lane A's data/processed")
+    ap.add_argument("--report-root", default=None, help="write reports/ and data/models/ here instead of --root")
+    ap.add_argument("--provenance", default="", help="note added to the report, e.g. which lane A commit was used")
+    a = ap.parse_args()
+    run(root=a.root, report_root=a.report_root, provenance=a.provenance)
 
 
 if __name__ == "__main__":
