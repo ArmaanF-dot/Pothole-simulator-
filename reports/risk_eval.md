@@ -1,6 +1,6 @@
 # Risk model evaluation
 
-_Generated 2026-10-17T13:48:31+00:00 by `python -m roadsense.models.risk` (risk-v0.1). as_of 2026-10-12._
+_Generated 2026-10-17T15:59:40+00:00 by `python -m roadsense.models.risk` (risk-v0.1). as_of 2026-10-12._
 
 **Labels are SYNTHETIC** (Generator 2, seed 2026). Scores on synthetic labels are a pipeline check, not proof the model works on real roads. The real-world check below uses real FixMyStreet reports.
 
@@ -88,44 +88,92 @@ Fitted on 1,464 segments resurfaced inside the log window (531 with a first poth
 <!-- real-label-eval:start -->
 ## Real-label evaluation with uncertainty (FixMyStreet, real data)
 
-Model trained on real FixMyStreet labels (`data\processed\fms_snapped.csv`), lane-a-data commit d3cb9a9, run read-only (lane A files not committed here). Score = share of a year's reports that land on the top 10% of road length, averaged over the test years. Ranges: paired cluster bootstrap that resamples test **segments** with replacement (1,000 resamples, seed 2026) and scores every method on the same resample. FixMyStreet counts measure reporting, not true pothole rates.
+Model trained on real FixMyStreet labels (`data\processed\fms_snapped.csv`). Score = share of a year's reports that land on the top 10% of road length, averaged over the test years. Ranges: paired cluster bootstrap that resamples test **segments** with replacement (1,000 resamples, seed 2026) and scores every method on the same resample. FixMyStreet counts measure reporting, not true pothole rates.
 
 **Full model** = physical features + past-report features (reports on the segment and its neighbours in earlier years). **Physical only** = same setup with no past-report feature at all: traffic load (esal_day, DfT HGV and bus flow), bus routes, bus stop, junction, flood area, highway class, road length, and the previous year's ward weather (rain, freeze-thaw, frost hours, rain-then-frost, hot days).
+
+### Brighton, test years
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 31.2% | 27.2% to 34.8% |
+| physical only | 21.2% | 17.7% to 24.6% |
+| last year reports | 21.7% | 18.6% to 26.4% |
+| load x past reports | 13.6% | 10.8% to 18.5% |
+| model minus last-year (paired) | 9.5% | 4.9% to 12.2% |
+| physical-only minus last-year (paired) | -0.5% | -7.0% to 3.6% |
+| model minus physical-only (paired) | 10.1% | 5.8% to 14.1% |
+
+n = 802 test reports on 8,179 test segments (2023, 2024, 2025). Model ahead of the last-year baseline in 100% of 1,000 resamples (seed 2026).
+
+Brighton, test years: model 31% (27%-35%) vs last-year baseline 22% (19%-26%); model ahead in 100% of resamples. The difference 10% (95% 5% to 12%) excludes 0, so the model beats the baseline. Physical-only model (no past reports): 21% (18%-25%); vs last-year baseline -1% (95% -7% to 4%), so it matches the baseline rather than beats it. Full model vs physical-only: 10% (95% 6% to 14%), past reports add real signal.
+
+Feature reliance (full model, share of mean |SHAP| on 24,537 test rows): past-report features **12%**; by group: weather 34%, road class and length 30%, past reports 12%, bus, junction, flood 12%, traffic load 6%, city 5%. Top features: length_m 27%, wx_rain_30d_mean 18%, rep_nb_prev1 9%. Mean |SHAP| averages over every segment, most of which have no report history, so it understates how much the top of the ranking leans on past reports; the paired model-minus-physical-only difference above is the direct measure. Weather is a ward-year summary with few distinct years in training, so its share partly reflects year-to-year differences in reporting.
 
 ### Southampton, test years
 
 | Method | Capture, top 10% of road length | 95% interval |
 |---|---|---|
-| model | 38.6% | 31.0% to 45.3% |
-| physical only | 19.9% | 12.8% to 26.4% |
+| model | 41.6% | 33.9% to 47.9% |
+| physical only | 10.4% | 7.1% to 14.3% |
 | last year reports | 33.7% | 24.5% to 38.9% |
 | load x past reports | 19.8% | 14.5% to 25.2% |
-| model minus last-year (paired) | 4.9% | 0.9% to 12.1% |
-| physical-only minus last-year (paired) | -13.7% | -20.1% to -4.1% |
-| model minus physical-only (paired) | 18.7% | 12.4% to 25.4% |
+| model minus last-year (paired) | 7.9% | 3.1% to 15.5% |
+| physical-only minus last-year (paired) | -23.3% | -29.3% to -13.0% |
+| model minus physical-only (paired) | 31.2% | 23.1% to 38.1% |
 
-n = 381 test reports on 8,145 test segments (2018, 2019). Model ahead of the last-year baseline in 99% of 1,000 resamples (seed 2026).
+n = 381 test reports on 8,145 test segments (2018, 2019). Model ahead of the last-year baseline in 100% of 1,000 resamples (seed 2026).
 
-Southampton, test years: model 39% (31%-45%) vs last-year baseline 34% (24%-39%); model ahead in 99% of resamples. The difference 5% (95% 1% to 12%) excludes 0, so the model beats the baseline. Physical-only model (no past reports): 20% (13%-26%); vs last-year baseline -14% (95% -20% to -4%), so it falls short of the baseline. Full model vs physical-only: 19% (95% 12% to 25%), past reports add real signal.
+Southampton, test years: model 42% (34%-48%) vs last-year baseline 34% (24%-39%); model ahead in 100% of resamples. The difference 8% (95% 3% to 15%) excludes 0, so the model beats the baseline. Physical-only model (no past reports): 10% (7%-14%); vs last-year baseline -23% (95% -29% to -13%), so it falls short of the baseline. Full model vs physical-only: 31% (95% 23% to 38%), past reports add real signal.
 
-Feature reliance (full model, share of mean |SHAP| on 16,290 test rows): past-report features **14%**; by group: road class and length 47%, weather 25%, past reports 14%, bus, junction, flood 8%, traffic load 6%, city 0%. Top features: length_m 43%, wx_frost_hours 11%, rep_nb_prev1 7%. Mean |SHAP| averages over every segment, most of which have no report history, so it understates how much the top of the ranking leans on past reports; the paired model-minus-physical-only difference above is the direct measure. Weather is a ward-year summary with few distinct years in training, so its share partly reflects year-to-year differences in reporting.
+Feature reliance (full model, share of mean |SHAP| on 16,290 test rows): past-report features **10%**; by group: weather 29%, road class and length 25%, city 22%, past reports 10%, bus, junction, flood 8%, traffic load 5%. Top features: length_m 23%, city_code 22%, wx_rain_30d_mean 17%. Mean |SHAP| averages over every segment, most of which have no report history, so it understates how much the top of the ranking leans on past reports; the paired model-minus-physical-only difference above is the direct measure. Weather is a ward-year summary with few distinct years in training, so its share partly reflects year-to-year differences in reporting.
+
+### Brighton, frozen 2026 check (Jan to Oct)
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 26.7% | 10.7% to 44.4% |
+| physical only | 20.0% | 6.4% to 35.3% |
+| last year reports | 16.7% | 3.3% to 27.3% |
+| load x past reports | 13.3% | 2.9% to 26.7% |
+| model minus last-year (paired) | 10.0% | -5.9% to 32.3% |
+| physical-only minus last-year (paired) | 3.3% | -12.5% to 24.0% |
+| model minus physical-only (paired) | 6.7% | -11.1% to 25.0% |
+
+n = 30 test reports on 8,179 test segments (2026). Model ahead of the last-year baseline in 88% of 1,000 resamples (seed 2026).
+
+Brighton, frozen 2026 check (Jan to Oct): model 27% (11%-44%) vs last-year baseline 17% (3%-27%); model ahead in 88% of resamples. The difference 10% (95% -6% to 32%) includes 0, so the model matches the baseline rather than beats it. Physical-only model (no past reports): 20% (6%-35%); vs last-year baseline 3% (95% -12% to 24%), so it matches the baseline rather than beats it. Full model vs physical-only: 7% (95% -11% to 25%), past reports add no clear signal. Only 30 reports, so the interval is wide.
+
+### Portsmouth, frozen 2026 check (Jan to Oct)
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 26.2% | 10.5% to 40.0% |
+| physical only | 19.0% | 7.5% to 33.3% |
+| last year reports | 26.2% | 2.9% to 27.0% |
+| load x past reports | 21.4% | 8.3% to 36.7% |
+| model minus last-year (paired) | 0.0% | -4.9% to 27.9% |
+| physical-only minus last-year (paired) | -7.1% | -9.1% to 19.6% |
+| model minus physical-only (paired) | 7.1% | -4.4% to 18.2% |
+
+n = 42 test reports on 6,010 test segments (2026). Model ahead of the last-year baseline in 87% of 1,000 resamples (seed 2026).
+
+Portsmouth, frozen 2026 check (Jan to Oct): model 26% (11%-40%) vs last-year baseline 26% (3%-27%); model ahead in 87% of resamples. The difference 0% (95% -5% to 28%) includes 0, so the model matches the baseline rather than beats it. Physical-only model (no past reports): 19% (7%-33%); vs last-year baseline -7% (95% -9% to 20%), so it matches the baseline rather than beats it. Full model vs physical-only: 7% (95% -4% to 18%), past reports add no clear signal. Only 42 reports, so the interval is wide.
 
 ### Southampton, frozen 2026 check (Jan to Oct)
 
 | Method | Capture, top 10% of road length | 95% interval |
 |---|---|---|
-| model | 12.1% | 2.6% to 24.1% |
-| physical only | 30.3% | 14.8% to 48.7% |
+| model | 15.2% | 3.6% to 28.0% |
+| physical only | 15.2% | 2.7% to 29.7% |
 | last year reports | 12.1% | 2.8% to 26.9% |
 | load x past reports | 21.2% | 8.3% to 40.7% |
-| model minus last-year (paired) | 0.0% | -14.3% to 10.7% |
-| physical-only minus last-year (paired) | 18.2% | 0.0% to 36.4% |
-| model minus physical-only (paired) | -18.2% | -36.7% to 0.0% |
+| model minus last-year (paired) | 3.0% | -12.1% to 14.8% |
+| physical-only minus last-year (paired) | 3.0% | -16.1% to 20.0% |
+| model minus physical-only (paired) | 0.0% | -16.1% to 15.4% |
 
-n = 33 test reports on 8,145 test segments (2026). Model ahead of the last-year baseline in 32% of 1,000 resamples (seed 2026).
+n = 33 test reports on 8,145 test segments (2026). Model ahead of the last-year baseline in 52% of 1,000 resamples (seed 2026).
 
-Southampton, frozen 2026 check (Jan to Oct): model 12% (3%-24%) vs last-year baseline 12% (3%-27%); model ahead in 32% of resamples. The difference 0% (95% -14% to 11%) includes 0, so the model matches the baseline rather than beats it. Physical-only model (no past reports): 30% (15%-49%); vs last-year baseline 18% (95% 0% to 36%), so it matches the baseline rather than beats it. Full model vs physical-only: -18% (95% -37% to 0%), past reports add no clear signal. Only 33 reports, so the interval is wide.
-
-Brighton 2023 to 2025: waiting for lane A's Brighton labels. The same code runs once they land.
+Southampton, frozen 2026 check (Jan to Oct): model 15% (4%-28%) vs last-year baseline 12% (3%-27%); model ahead in 52% of resamples. The difference 3% (95% -12% to 15%) includes 0, so the model matches the baseline rather than beats it. Physical-only model (no past reports): 15% (3%-30%); vs last-year baseline 3% (95% -16% to 20%), so it matches the baseline rather than beats it. Full model vs physical-only: 0% (95% -16% to 15%), past reports add no clear signal. Only 33 reports, so the interval is wide.
 
 <!-- real-label-eval:end -->

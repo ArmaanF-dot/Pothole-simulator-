@@ -97,6 +97,8 @@ def load_inputs(cfg: dict, root: Path | None = None) -> dict:
     sources = {}
     if seg_path.exists():
         seg = _normalise_segments(_read_any(seg_path))
+        if cfg.get("city") and "city" in seg:          # synthetic council data and weekly risk: target city only
+            seg = seg[seg["city"] == cfg["city"]]
         sources["segments"] = rel(seg_path)
     else:
         from roadsense.synthetic.mock import mock_segments
@@ -118,6 +120,8 @@ def load_inputs(cfg: dict, root: Path | None = None) -> dict:
     if wx_path is not None:
         wx = _read_any(wx_path)
         wx["week_start"] = pd.to_datetime(wx["week_start"])
+        if cfg.get("city") and "city" in wx:
+            wx = wx[wx["city"] == cfg["city"]].reset_index(drop=True)
         sources["weather"] = rel(wx_path)
     else:
         from roadsense.synthetic.mock import mock_weekly_weather
