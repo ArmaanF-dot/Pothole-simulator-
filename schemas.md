@@ -5,7 +5,7 @@ It covers every input listed in lane B's draft (`data/synthetic/SCHEMAS_lane_b.m
 using the same column names, plus the real FixMyStreet labels.
 Any change to a column needs a note here and a message to the other lane.
 
-_v1, 17 Oct 2026. Owner: lane A._
+_v2, 17 Oct 2026. Sections 1–6 owned by lane A, 7–8 by lane B, 9–10 by lane C. Contract agreed by lane B._
 
 ## Conventions
 - **Cities:** `Southampton`, `Portsmouth`, `Brighton`. `city_code`: `SOU`, `POR`, `BRI`. Bournemouth (BCP) has no data: see `DATA_GAPS.md`.
@@ -90,9 +90,16 @@ Built by `python -m roadsense.features.load`. Lane B's loader merges `esal_day` 
 
 ## 4. Weather: `data/processed/weather_weekly.parquet` (M3)
 One row per ward × week, exactly as lane B asked for. **Every window uses only hours before `week_start`.**
-`ward, week_start, rain_3d, rain_7d, rain_30d, rain_90d, hours_below_0_7d, freeze_thaw_14d, freeze_thaw_30d, rain_then_frost_7d, hot_days_7d, source`
+`city, ward, week_start, rain_3d, rain_7d, rain_30d, rain_90d, hours_below_0_7d, freeze_thaw_14d, freeze_thaw_30d, rain_then_frost_7d, hot_days_7d, uses_forecast, data_date, retrieved_at, source`
 - Rain is in mm, plus counts of hours/days. A freeze-thaw crossing is the temperature passing 0 °C in either direction.
-- Weather source still to be confirmed (licence check). Until then lane B keeps using its mock.
+- `uses_forecast`: true if any hour in the 7 days before `week_start` came from the forecast. `data_date`: latest weather hour in the pull.
+- **Source: Open-Meteo, CC BY 4.0, free tier non-commercial.** Hourly values at each ward's centre (`python -m roadsense.ingest.weather <city>`
+  then `python -m roadsense.features.weather_feats <city>`). `week_start` is a string `YYYY-MM-DD` (Monday).
+
+### `data/processed/weather_forecast_weekly.parquet`
+The rows of `weather_weekly.parquet` whose `week_start` is **after the build date**: the next 3 weeks, built from the 16-day Open-Meteo forecast.
+Same columns, and `uses_forecast` is true on every row. Ward names match `segments.parquet` exactly (checked by `tests/test_contract.py`).
+Rewritten on every weather build, so re-run the weather build before scoring.
 
 ## 5. Labels for the "where" model: `data/processed/labels_segment_year.csv` (M2)
 | Column | Type | Notes |
@@ -119,8 +126,70 @@ Built by `python -m roadsense.features.labels`.
 | Portsmouth | all | extra training / small transfer test | — |
 | All | 2026 Jan–Oct | — | `frozen_2026` check only, report n and a bootstrap range |
 
-## Open questions for lane B
-1. **Snap radius:** your draft uses 15 m and STATUS.md says 25 m. `snap_dist_m` is stored so either works. Pick one for the headline numbers.
-2. **Segment length:** lane A cuts to ≤200 m (STATUS.md). Your mock uses 75 m. Tell us if the models need shorter pieces.
-3. **Residential roads:** they are kept in `segments.parquet` for your synthetic generators. The FixMyStreet scores use `is_main_road` only.
-4. ~~**Label roads**~~ **decided 17 Oct: all roads.** Was: only 27% of Southampton 2015–19 reports (261 of 997) snap to main roads (≤25 m). Labels now cover all road classes, and `is_main_road` is a feature.
+## Decisions agreed with lane B (17 Oct)
+1. **Snap radius:** 25 m for real FixMyStreet labels. 15 m only for lane B's synthetic potholes. `snap_dist_m` is stored in `fms_snapped.csv`.
+2. **Residential roads are kept** in `segments.parquet` (and scored).
+3. **Labels cover all roads.** `is_main_road` is a feature, not a filter (only 27% of Southampton 2015–19 reports are on A/B roads).
+4. **Segment length:** ≤200 m. Lane B hasn't asked for a change.
+
+---
+
+# Outputs: lane B → lane C (sections 7–10)
+Conventions as above: string `segment_id`, EPSG:4326, ISO dates, `week_start` = Monday.
+**Every output says whether synthetic data went into it**, so the UI can show the SYNTHETIC badge.
+**Files:** each run writes a dated file (`<name>_<YYYY-MM-DD>`) **and** a copy at `<name>_latest` with the same contents, which the API reads.
+
+## 7. Risk and wear: `outputs/risk_<YYYY-MM-DD>.parquet` + `outputs/risk_latest.parquet` (lane B writes, lane C reads)
+**4 rows per scored segment, one per forecast week** (`horizon_week` 1–4). Motorways (`owner = national_highways`) are not scored. Residential roads are.
+| Column | Type | Notes |
+|---|---|---|
+| segment_id | str | joins `segments.parquet` |
+| ward | str | from `segments.parquet` (lets the API filter without a join) |
+| week_start | date | forecast week |
+| horizon_week | int | 1–4: weeks ahead of the run date |
+| p7 | float 0–1 | calibrated probability of a pothole in the next 7 days |
+| p30 | float 0–1 | … next 30 days |
+| p30_trend | float | change in p30 against the previous week's row (as defined by lane B) |
+| wear | float 0–100 | % cumulative failure probability at current age. **Southampton only** (needs synthetic resurfacing history); **blank elsewhere** |
+| reason_1, reason_2, reason_3 | str | plain-English top SHAP reasons, e.g. "High HGV + bus load (A33)" |
+| model_version | str | e.g. `risk@2026-10-17T22:40` |
+| trained_on | str | `synthetic`, `real`, or `synthetic+real` |
+| uses_synthetic | bool | true if any synthetic input/label was used |
+| weather_source | str | `open-meteo` or `mock` |
+| weather_data_date | str | latest weather hour used (for the STALE banner) |
+| uses_forecast | bool | the row depends on forecast weather (`weather_forecast_weekly.parquet`) |
+
+## 8. Street lights: `outputs/lights_<YYYY-MM-DD>.parquet` + `outputs/lights_latest.parquet` (lane B → C)
+| Column | Type | Notes |
+|---|---|---|
+| lamp_id | str | |
+| segment_id | str | |
+| lat, lon | float | |
+| lamp_type | str | `LED` / `legacy` |
+| p_fail_90d | float 0–1 | |
+| due_90d | bool | due for replacement within 90 days (as defined by lane B) |
+| replace_by | date | date cumulative failure reaches 0.5 |
+| currently_dark | bool | open fault in the last 30 days (synthetic) or open FixMyStreet street-lighting report (real, `fms_streetlights.csv`) |
+| dark_since | date | fault or report date; blank if not dark |
+| dark_source | str | `synthetic` / `fixmystreet` / blank |
+| uses_synthetic | bool | |
+
+## 9. Prevention plan rows: `outputs/prevention_plan_<YYYY-MM-DD>.csv` (lane C writes, from 7)
+`rank, segment_id, ward, name, ref, band (critical/high/prevention/monitor), urgency (0–100), p30, wear,
+treatment (crack_sealing/surface_dressing/patch/resurface/permanent_repair), reason_1..3,
+cost_planned_gbp, cost_reactive_avoided_gbp, open_fms_report (bool), uses_synthetic, data_dates (json: source → date)`
+
+**Open points (awaiting lane C):** band thresholds and the urgency formula; treatment rules; cost figures and their source;
+whether a `prevention_plan_latest.csv` copy is needed like 7–8.
+
+## 10. API JSON (lane C serves; field names = the columns above)
+- `GET /segments?ward=&band=` → GeoJSON FeatureCollection; properties = segments.parquet fields (no geometry column)
+  + latest risk row + `urgency`, `band`, `load_confidence` (high/medium/low from `load_source`).
+- `GET /segments/{id}` → one Feature plus `risk_weeks: [...]` (the 4 rows), `load: {...}`, `reports: [...]`.
+- `GET /plan/prevention?ward=` → `{as_of, provisional (bool, true if forecast > 24 h old), rows: [section 9]}`
+- `GET /lights?due_days=90` → section 8 rows.
+- `POST /reports` / `POST /outcomes` → as in the spec (M8).
+- `GET /sources` → `[{name, used_for, licence, retrieved_at, data_date, is_synthetic}]` for the footer.
+
+**Open points (awaiting lane C):** the `load_confidence` mapping (count → high, same_road → medium, class_median → low?);
+the "forecast > 24 h old" rule against `retrieved_at`; the `POST` payloads; whether `/segments` takes a city filter.

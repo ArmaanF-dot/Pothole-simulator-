@@ -20,7 +20,8 @@ LOAD = ["segment_id", "hgv_bus_aadf", "esal_day", "count_point_id", "count_year"
 LABELS = ["city", "segment_id", "year", "n_reports", "had_report", "split"]
 WEATHER = ["ward", "week_start", "rain_3d", "rain_7d", "rain_30d", "rain_90d", "hours_below_0_7d",
            "freeze_thaw_14d", "freeze_thaw_30d", "rain_then_frost_7d", "hot_days_7d", "source"]
-RISK = ["segment_id", "p7", "p30", "wear"]          # lane B -> lane C (see docs/contract_outputs.md)
+RISK = ["segment_id", "ward", "week_start", "horizon_week", "p7", "p30", "p30_trend", "wear",
+        "weather_source", "uses_synthetic", "uses_forecast"]          # lane B -> lane C (schemas.md section 7)
 
 
 def load(path):
@@ -72,6 +73,20 @@ def test_weather_covers_every_segment_ward(seg):
     assert not wx.duplicated(["ward", "week_start"]).any()
 
 
+def test_forecast_weather_matches_segment_wards(seg):
+    fc = load(os.path.join(P, "weather_forecast_weekly.parquet"))
+    assert not missing(fc, WEATHER + ["uses_forecast"])
+    assert len(fc), "no forecast weeks"
+    wk = pd.to_datetime(fc.week_start)
+    assert (wk.dt.weekday == 0).all(), "week_start must be a Monday"
+    assert (wk.dt.date > pd.Timestamp(fc.retrieved_at.min()[:10]).date()).all(), "forecast weeks must start after the pull date"
+    assert not fc.duplicated(["ward", "week_start"]).any()
+    for city, f in fc.groupby("city"):
+        seg_wards = set(seg.loc[seg.city == city, "ward"])
+        assert set(f.ward) == seg_wards, f"{city}: forecast ward names differ from segments.parquet"
+        assert (f.groupby("ward").week_start.nunique() == f.week_start.nunique()).all(), f"{city}: wards cover different weeks"
+
+
 def test_snapped_reports_link(seg):
     sn = load(os.path.join(P, "fms_snapped.csv"))
     ids = sn.segment_id.dropna()
@@ -97,3 +112,5 @@ def test_risk_output_links(seg):
     assert not missing(r, RISK)
     assert set(r.segment_id) <= set(seg.segment_id)
     assert r[["p7", "p30"]].apply(lambda c: c.between(0, 1)).all().all()
+    assert (r.groupby("segment_id").size() == 4).all(), "4 weekly rows per scored segment"
+    assert set(r.horizon_week.unique()) <= {1, 2, 3, 4}
