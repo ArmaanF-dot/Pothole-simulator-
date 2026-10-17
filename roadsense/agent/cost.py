@@ -30,13 +30,15 @@ def compute(cfg: dict, log: pd.DataFrame) -> dict:
     price_out = c["price_per_mtok_usd"]["output"] * c["usd_to_gbp"] / 1e6
     out = {"n_calls_logged": len(log)}
     per = {}
-    for kind in ["triage", "weekly_plan"]:
+    for kind in ["triage", "triage_eval", "weekly_plan"]:
         k = log[log["kind"] == kind]
         if len(k):
             inp = k["prompt_tokens"].mean()
             outp = (k["output_tokens"] + k["thoughts_tokens"].fillna(0)).mean()
             per[kind] = {"n": len(k), "input_tokens": float(inp), "output_tokens": float(outp),
-                         "gbp": float(inp * price_in + outp * price_out)}
+                         "calls": float(k["calls"].mean()) if "calls" in k else None,
+                         "gbp": float(inp * price_in + outp * price_out),
+                         "models": sorted(k["model"].dropna().unique().tolist())}
     out["per_item"] = per
     if "triage" in per:
         tri = per["triage"]["gbp"] * c["reports_per_month"] / c["officers"]
@@ -47,34 +49,61 @@ def compute(cfg: dict, log: pd.DataFrame) -> dict:
     return out
 
 
+LABEL = {"triage": "Full triage (agent loop: lookup, duplicates, risk, work order)",
+         "triage_eval": "Classification only (one call, used by the 100-report eval)",
+         "weekly_plan": "Weekly plan summary"}
+
+
 def write_cost_report(cfg: dict | None = None, root: Path | None = None) -> Path:
     cfg = cfg or I.load_config()
     log = read_log(cfg, root)
     r = compute(cfg, log)
     c = cfg["cost"]
+    pi, po, fx = c["price_per_mtok_usd"]["input"], c["price_per_mtok_usd"]["output"], c["usd_to_gbp"]
     L = ["# Running cost per officer", "",
          f"_Generated {datetime.now(timezone.utc).isoformat(timespec='seconds')} by `python -m roadsense.agent.cost` "
-         "from the token log (`outputs/lane_c/token_log.jsonl`). Token counts are what the Gemini API reported "
-         "(`usage_metadata`), not estimates._", ""]
-    if "triage" not in r["per_item"]:
-        L += ["**No live Gemini calls logged yet**, so there is no measured cost. Add `GEMINI_API_KEY` to `.env`, then run "
-              "`python -m roadsense.agent.triage` (100 real reports) and `python -m roadsense.agent.cost`.", ""]
+         "from the token log (`outputs/lane_c/token_log.jsonl`). Re-run it after any live Gemini run and this page updates._", "",
+         "## Measured", "",
+         "Token counts below are what the Gemini API returned in `usage_metadata` for each call: real counts, not estimates."]
+    if not r["per_item"]:
+        L += ["", "**Nothing measured yet:** no live Gemini call is in the log. Add `GEMINI_API_KEY` to `.env`, then run "
+              "`python -m roadsense.agent.triage` and `python -m roadsense.agent.cost`."]
     else:
-        L += ["| Item | Calls logged | Mean input tokens | Mean output tokens (incl. thinking) | £ per item |",
-              "| --- | --- | --- | --- | --- |"]
+        L += ["", "| What | Logged | Model | Mean input tokens | Mean output tokens (incl. thinking) | API calls each | £ each at the assumed price |",
+              "| --- | --- | --- | --- | --- | --- | --- |"]
         for k, v in r["per_item"].items():
-            L.append(f"| {k.replace('_', ' ')} | {v['n']} | {v['input_tokens']:,.0f} | {v['output_tokens']:,.0f} | £{v['gbp']:.5f} |")
-        L += ["", f"**£{r['total_gbp_per_officer_month']:.2f} per officer per month**: "
-              f"LLM £{r['llm_gbp_per_officer_month']:.2f} + hosting £{r['hosting_gbp_per_officer_month']:.2f}.", ""]
-    L += ["## Assumptions (config, not measured)", "",
-          f"- Price: ${c['price_per_mtok_usd']['input']}/M input and ${c['price_per_mtok_usd']['output']}/M output tokens "
-          f"({cfg['triage']['model']} paid tier; check ai.google.dev/pricing), ${1}=£{c['usd_to_gbp']}.",
-          f"- Volume: {c['reports_per_month']} reports a month city-wide (about 3,600 Southampton pothole repairs a year, "
-          f"FOI 2021-2025), shared by {c['officers']} officers; {c['plans_per_officer_per_month']} weekly plans per officer a month.",
-          f"- Hosting: £{c['hosting_gbp_per_month']} a month for one small VM running the API and page, shared by all officers.",
-          "- The weekly plan itself is computed without an LLM; only report triage calls Gemini.",
-          "- The free tier costs nothing but may use prompts to improve Google's products, so only public reports and "
-          "synthetic data are sent.", ""]
+            L.append(f"| {LABEL.get(k, k)} | {v['n']} | {', '.join(v['models'])} | {v['input_tokens']:,.0f} | "
+                     f"{v['output_tokens']:,.0f} | {v['calls'] if v['calls'] is not None else 'n/a'} | £{v['gbp']:.5f} |")
+        n_full = r["per_item"].get("triage", {}).get("n", 0)
+        L += ["", f"Sample size: **{n_full} full triage run(s)**"
+              + (" only, so the per-report figure is indicative. Run more reports through `POST /reports` with Gemini on to firm it up."
+                 if n_full < 20 else ".")]
+    L += ["", "## Formula", "",
+          "```",
+          "£ per report     = (input_tokens x P_in + output_tokens x P_out) / 1,000,000 x FX",
+          "LLM £/officer/mo = £ per report x reports_per_month / officers  (+ £ per plan x plans per officer, 0 today)",
+          "Total            = LLM £/officer/mo + hosting £/month / officers",
+          "```", "",
+          f"with P_in = ${pi}, P_out = ${po} per million tokens, FX = £{fx} per $, reports_per_month = {c['reports_per_month']}, "
+          f"officers = {c['officers']}, hosting = £{c['hosting_gbp_per_month']}/month.", ""]
+    if "total_gbp_per_officer_month" in r:
+        t = r["per_item"]["triage"]
+        L += ["## Result", "",
+              f"£{t['gbp']:.5f} per report x {c['reports_per_month']} / {c['officers']} = "
+              f"**£{r['llm_gbp_per_officer_month']:.2f} LLM** + £{r['hosting_gbp_per_officer_month']:.2f} hosting = "
+              f"**£{r['total_gbp_per_officer_month']:.2f} per officer per month** "
+              f"(from {t['n']} measured full triage run(s); the token count is measured, the price and volumes are assumptions).", ""]
+    else:
+        L += ["## Result", "", "**Not measured yet:** the formula above fills in once a full triage run is logged.", ""]
+    L += ["## Not measured (config assumptions)", "",
+          f"- **Price:** ${pi}/M input and ${po}/M output is the Gemini 2.5 Flash paid-tier list price. The logged model is "
+          f"`{cfg['triage']['model']}`; its price has not been checked, so confirm on ai.google.dev/pricing before quoting the £ figure.",
+          f"- **Volume:** {c['reports_per_month']} reports a month city-wide (about 3,600 Southampton pothole repairs a year, FOI 2021-2025) "
+          f"shared by {c['officers']} officers. Both are assumptions.",
+          f"- **Hosting:** £{c['hosting_gbp_per_month']} a month for one small VM running the API and page. Assumption.",
+          "- **The weekly plan uses no LLM**, so it adds no token cost.",
+          "- **The free tier** costs nothing but is rate-limited (5 requests a minute; a live run hit the daily quota on 17 Oct) "
+          "and may use prompts to improve Google's products, so only public reports and synthetic data are sent.", ""]
     p = I.resolve(cfg, "reports_dir", root) / "cost.md"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("\n".join(L), encoding="utf-8")

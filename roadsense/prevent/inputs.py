@@ -79,6 +79,12 @@ def load_segments(cfg: dict, root: Path | None = None) -> tuple[pd.DataFrame, di
                     if c in load]
             seg = seg.drop(columns=[c for c in keep if c != "segment_id" and c in seg]).merge(
                 load[keep], on="segment_id", how="left")
+        cp = d / "segment_context.parquet"  # schemas.md 2b: cycle_route, near_school_hospital (missing = false)
+        if cp.exists():
+            ctx = pd.read_parquet(cp)[["segment_id", "cycle_route", "near_school_hospital"]]
+            seg = seg.drop(columns=[c for c in ["cycle_route", "near_school_hospital"] if c in seg]).merge(
+                ctx, on="segment_id", how="left")
+            seg[["cycle_route", "near_school_hospital"]] = seg[["cycle_route", "near_school_hospital"]].fillna(False).astype(bool)
         meta = {"name": "segments", "path": _rel(p, root), "kind": kind, "retrieved_at": _mtime(p),
                 "load_path": _rel(lp, root) if lp.exists() else None}
         return _segment_defaults(seg), meta

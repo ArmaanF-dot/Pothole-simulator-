@@ -201,7 +201,7 @@ def test_bulk_crew_outcomes(root):
 def test_cost_report(root):
     cfg = I.load_config()
     C.write_cost_report(cfg, root)
-    assert "No live Gemini calls" in (root / "reports" / "cost.md").read_text(encoding="utf-8")
+    assert "Nothing measured yet" in (root / "reports" / "cost.md").read_text(encoding="utf-8")
     TR.log_tokens(cfg, "triage", "m", {"prompt_tokens": 1000, "output_tokens": 100, "thoughts_tokens": 0, "total_tokens": 1100}, root=root)
     r = C.compute(cfg, C.read_log(cfg, root))
     exp = (1000 * 0.30 + 100 * 2.50) * 0.75 / 1e6

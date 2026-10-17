@@ -1,0 +1,17 @@
+{"ts": "2026-10-17T14:28:34+00:00", "kind": "triage", "model": "gemini-3.8-flash", "ref": "eval-482211", "prompt_tokens": 3254, "output_tokens": 194, "thoughts_tokens": 0, "total_tokens": 3448, "calls": 4}
+{"ts": "2026-10-17T14:31:06+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-482211", "prompt_tokens": 674, "output_tokens": 85, "thoughts_tokens": 0, "total_tokens": 759, "calls": 1}
+{"ts": "2026-10-17T14:31:20+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-8505950", "prompt_tokens": 682, "output_tokens": 91, "thoughts_tokens": 0, "total_tokens": 773, "calls": 1}
+{"ts": "2026-10-17T14:31:35+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-463256", "prompt_tokens": 672, "output_tokens": 84, "thoughts_tokens": 95, "total_tokens": 851, "calls": 1}
+{"ts": "2026-10-17T14:31:45+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-425614", "prompt_tokens": 675, "output_tokens": 82, "thoughts_tokens": 0, "total_tokens": 757, "calls": 1}
+{"ts": "2026-10-17T14:32:00+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-1724053", "prompt_tokens": 680, "output_tokens": 79, "thoughts_tokens": 82, "total_tokens": 841, "calls": 1}
+{"ts": "2026-10-17T14:32:17+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-437072", "prompt_tokens": 671, "output_tokens": 107, "thoughts_tokens": 0, "total_tokens": 778, "calls": 1}
+{"ts": "2026-10-17T14:32:25+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-1088154", "prompt_tokens": 676, "output_tokens": 100, "thoughts_tokens": 0, "total_tokens": 776, "calls": 1}
+{"ts": "2026-10-17T14:32:38+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-413190", "prompt_tokens": 672, "output_tokens": 105, "thoughts_tokens": 0, "total_tokens": 777, "calls": 1}
+{"ts": "2026-10-17T14:32:54+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-479515", "prompt_tokens": 672, "output_tokens": 73, "thoughts_tokens": 0, "total_tokens": 745, "calls": 1}
+{"ts": "2026-10-17T14:33:04+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-448915", "prompt_tokens": 672, "output_tokens": 84, "thoughts_tokens": 59, "total_tokens": 815, "calls": 1}
+{"ts": "2026-10-17T14:33:17+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-316284", "prompt_tokens": 674, "output_tokens": 81, "thoughts_tokens": 81, "total_tokens": 836, "calls": 1}
+{"ts": "2026-10-17T14:33:34+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-742217", "prompt_tokens": 673, "output_tokens": 83, "thoughts_tokens": 0, "total_tokens": 756, "calls": 1}
+{"ts": "2026-10-17T14:33:43+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-992138", "prompt_tokens": 675, "output_tokens": 73, "thoughts_tokens": 0, "total_tokens": 748, "calls": 1}
+{"ts": "2026-10-17T14:33:56+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-415388", "prompt_tokens": 672, "output_tokens": 78, "thoughts_tokens": 0, "total_tokens": 750, "calls": 1}
+{"ts": "2026-10-17T14:34:30+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-336974", "prompt_tokens": 672, "output_tokens": 105, "thoughts_tokens": 0, "total_tokens": 777, "calls": 1}
+{"ts": "2026-10-17T14:35:02+00:00", "kind": "triage_eval", "model": "gemini-3.8-flash", "ref": "eval-230611", "prompt_tokens": 672, "output_tokens": 60, "thoughts_tokens": 0, "total_tokens": 732, "calls": 1}
