@@ -78,6 +78,9 @@ FixMyStreet is one of several ways residents report problems, so its reports are
 which runs it, warns against using the data to compare or rank areas. RoadSense therefore only ranks roads *within* a
 city and never compares councils. Report status relies on residents marking problems fixed, so many "open" reports
 are years old. The app only treats reports from the last 120 days as open.
+[FixMyStreet itself notes](https://www.fixmystreet.com/about/connecting) that local road conditions can't be inferred
+from its reports alone, which is why RoadSense combines reports with physical road data (traffic, buses, segment,
+weather).
 
 **Reproducible:** `python -m roadsense.models.real_risk` (fixed seed 2026) regenerates `reports/real_risk_eval.md`.
 A second team member re-ran it from a clean `main` on 17 Oct and got identical numbers.
@@ -118,7 +121,7 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 
 | Source | What we use it for | Coverage / dates | Licence and attribution |
 |---|---|---|---|
-| **FixMyStreet** (mySociety), Open311 API `fixmystreet.com/open311/v2/requests.json` | Pothole reports, used as training and test labels. Agencies: Southampton 2567, Portsmouth 2657, Brighton & Hove 2614 | Southampton train 2015–17, test 2018–19; Brighton train ≤2022, test 2023–25; Portsmouth extra training. Retrieved 17 Oct 2026, 11:00 UTC | No explicit licence stated; public reports via mySociety's Open311 API, attributed. Used for non-commercial research only; we keep only location, category, status, date and a redacted title. Credit: FixMyStreet / mySociety |
+| **FixMyStreet** (mySociety), Open311 API `fixmystreet.com/open311/v2/requests.json` | Pothole reports, used as training and test labels. Agencies: Southampton 2567, Portsmouth 2657, Brighton & Hove 2614 | Southampton train 2015–17, test 2018–19; Brighton train ≤2022, test 2023–25; Portsmouth extra training. Retrieved 17 Oct 2026, 11:00 UTC | No licence stated. FixMyStreet names its Open311 API as the route for extracting report data (https://www.fixmystreet.com/about/connecting); we use that API, not scraping. Reports attributed to mySociety. |
 | **OpenStreetMap** | Road network split into segments (22,334 across 3 cities), road class (`is_main_road`), cycle routes, schools and hospitals | Extract retrieved 17 Oct 2026, 12:03 UTC | © OpenStreetMap contributors, Open Database Licence (ODbL) 1.0. openstreetmap.org/copyright |
 | **DfT road traffic statistics** | Traffic load per segment (AADF incl. HGVs). 314 Southampton segments have a direct count; the rest use road-class medians, shown in the app as "modelled estimate" | Count year up to 2025, retrieved 17 Oct 2026, 12:22 UTC | Open Government Licence v3.0. Contains public sector information licensed under the OGL v3.0 |
 | **Environment Agency Flood Map for Planning: Flood Zone 3** | Flood exposure feature | Retrieved 17 Oct 2026, 12:45 UTC | Open Government Licence v3.0. © Environment Agency copyright and/or database right. Contains OS data © Crown copyright and database right |
