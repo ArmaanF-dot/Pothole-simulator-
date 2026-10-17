@@ -50,4 +50,14 @@ def test_inspection_list_rows(view):
     for word in ["£", "gbp", "p30", "treatment_label", "cost_"]:
         assert word not in blob.replace("treatments are chosen on inspection", "")
     assert out["badge"] == "100% real inputs"
+    assert [x["label"] for x in out["sections"]] == ["Open reports (inspect first)", "Highest predicted risk"]
+    assert [x["count"] for x in out["sections"]] == [1, 50]
+    assert rows[0]["section"] == "open" and all(r["section"] == "risk" for r in rows[1:])
     assert out["header"].startswith("Testcity inspection list: ranked by risk from real FixMyStreet reports.")
+
+
+def test_weather_summaries_are_never_reasons():
+    from roadsense.models import plan_risk, real_risk
+    assert set(real_risk.WEATHER) <= plan_risk.NEVER_A_REASON
+    assert plan_risk.REAL_HISTORY_REASONS["rep_prev1"]({"rep_prev1": 1.0}) == "1 FixMyStreet pothole report here last year"
+    assert plan_risk.REAL_HISTORY_REASONS["rep_prev1"]({"rep_prev1": 3.0}) == "3 FixMyStreet pothole reports here last year"

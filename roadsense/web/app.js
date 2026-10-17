@@ -269,13 +269,16 @@ async function loadInspection(c) {
     <span class="small">${p.count} segments: ${p.open_report_rows} with an open FixMyStreet report in the last ${p.window_days} days (first),
     then the top ${p.top_n} by risk rank in ${esc(c)}.</span>`;
   const BAND = { top1: "critical", top5: "high", top10: "prevention" };
-  $("#inspect-rows").innerHTML = p.rows.map((r) => `<tr data-id="${esc(r.segment_id)}">
+  const row = (r) => `<tr data-id="${esc(r.segment_id)}">
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         ${r.open_report ? ` <span class="vb must">open report</span><div class="reasons">${r.open_reports.map((o) => `${esc(o.reported_at)}: ${esc(o.title)}`).join(" · ")}</div>` : ""}
         <div class="reasons">${esc(r.reasons.join(" · "))}</div></td>
       <td><span class="u ${BAND[r.risk_band] || "monitor"}">${esc(r.risk_label)}</span></td>
-      <td>${esc(r.action)}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">No segments.</td></tr>`;
+      <td>${esc(r.action)}</td></tr>`;
+  $("#inspect-rows").innerHTML = p.sections.filter((s) => s.count).map((s) =>
+    `<tr class="section"><th colspan="4">${esc(s.label)} <span class="muted small">${s.count} · ${esc(s.note)}</span></th></tr>`
+    + p.rows.filter((r) => r.section === s.key).map(row).join("")).join("") || `<tr><td colspan="4" class="muted">No segments.</td></tr>`;
   document.querySelectorAll("#inspect-rows tr[data-id]").forEach((tr) => tr.onclick = () => showCitySegment(tr.dataset.id));
 }
 

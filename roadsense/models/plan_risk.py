@@ -81,12 +81,21 @@ REASONS = {
     "rep_prev1_per_km": lambda r: "high pothole density last year (synthetic council log, scaled)",
     "city_code": lambda r: "city",
 }
+def _n_reports(x: float, noun: str) -> str:
+    n = int(round(x))
+    return f"{n} {noun}" + ("" if n == 1 else "s")
+
+
 REAL_HISTORY_REASONS = {
-    "rep_prev1": lambda r: f"{r['rep_prev1']:.0f} FixMyStreet pothole reports here last year",
-    "rep_prev2_3": lambda r: f"{r['rep_prev2_3']:.0f} FixMyStreet pothole reports here in the two years before",
-    "rep_nb_prev1": lambda r: f"{r['rep_nb_prev1']:.0f} FixMyStreet reports on neighbouring segments last year",
+    "rep_prev1": lambda r: f"{_n_reports(r['rep_prev1'], 'FixMyStreet pothole report')} here last year",
+    "rep_prev2_3": lambda r: f"{_n_reports(r['rep_prev2_3'], 'FixMyStreet pothole report')} here in the two years before",
+    "rep_nb_prev1": lambda r: f"{_n_reports(r['rep_nb_prev1'], 'FixMyStreet report')} on neighbouring segments last year",
     "rep_prev1_per_km": lambda r: "high FixMyStreet report density last year",
 }
+# Last year's weather summaries stay in the model but are never shown as a reason: Open-Meteo gives only
+# 3 (Southampton) to 6 (Brighton) distinct grid values across a city's wards, so "frost hours in the ward"
+# would repeat the same number for most roads and read as ward-specific when it is not.
+NEVER_A_REASON = {"city_code", "wx_rain_30d_mean", "wx_freeze_thaw", "wx_frost_hours", "wx_rain_then_frost", "wx_hot_days"}
 NOT_A_REASON_WHEN_ZERO = {"bus_routes", "bus_stop", "junction", "in_flood_area", "is_main_road", "rep_prev1",
                           "rep_prev2_3", "rep_nb_prev1", "rep_prev1_per_km", "wx_freeze_thaw", "wx_frost_hours",
                           "wx_rain_then_frost", "wx_hot_days"}
@@ -104,7 +113,7 @@ def reasons_from_contrib(model, X: pd.DataFrame, k: int = 3, history: str = "syn
             f = feats[j]
             if contrib[i, j] <= 0 or len(rs) == k:
                 break
-            if f == "city_code" or (f in NOT_A_REASON_WHEN_ZERO and not recs[i][f]):
+            if f in NEVER_A_REASON or (f in NOT_A_REASON_WHEN_ZERO and not recs[i][f]):
                 continue
             rs.append(texts[f](recs[i]))
         out.append(rs)

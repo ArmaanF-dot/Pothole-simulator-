@@ -70,4 +70,5 @@ form#triage-form select { max-width: 100%; }
 .legend b.lg { font-weight: 400; }
 #city-note { margin-top: 8px; }
 .other-city .tab:not(#tab-triage):not(#tab-plan) { display: none !important; }
-.other-city .home-only { display: none !important; }   /* Southampton's synthetic inputs and badges */
+.other-city .home-only { display: none !important; }
+tr.section th { text-align: left; padding-top: 10px; border-bottom: 1px solid #ccc; }   /* Southampton's synthetic inputs and badges */
