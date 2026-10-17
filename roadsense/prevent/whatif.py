@@ -2,8 +2,9 @@
 
     python -m roadsense.prevent.whatif --scenario rain_then_frost   (also wet_week, cold_snap)
 
-Re-scoring uses lane B's trained risk model when it is importable (the forward feature rows are
-rebuilt, the scenario deltas are added to forecast weeks, and p30 is predicted again). Otherwise a
+Re-scoring uses lane B's synthetic-trained weekly model when it is importable (the forward feature rows
+are rebuilt, the scenario deltas are added to forecast weeks, p30 is predicted again, and the hazard
+ratio scales the plan's risk, which is the real-label ranking since 17 Oct). Otherwise a
 sensitivity surrogate is used: monthly hazard is scaled by exp(sum of coef x delta) times a load
 factor, with the spec's published generator coefficients. The method used is returned and shown.
 """
@@ -75,15 +76,23 @@ def model_rescore(risk: pd.DataFrame, scenario: str, cfg: dict, root: Path | Non
     for f, v in cfg["whatif"]["scenarios"][scenario].items():
         if f in pert:
             pert.loc[m, f] = pert.loc[m, f] + v
-    diff = pd.DataFrame({"segment_id": fwd["segment_id"], "k": fwd["horizon_week"] - shift, "d": predict(pert) - base})
-    piv = diff.pivot_table(index="segment_id", columns="k", values="d")
+    # The weekly synthetic-trained model (its output is outputs/risk_synthetic_latest.parquet) gives the weather
+    # response. Its hazard ratio (scenario / baseline) scales the plan's own risk, which since 17 Oct is the
+    # real-label ranking (trained_on = real), so the what-if never swaps one model's level for the other's.
+    def hazard(p):
+        return -np.log1p(-np.clip(p, 0, 0.999))
+
+    ratio = np.clip(hazard(predict(pert)) / np.maximum(hazard(base), 1e-6), 1.0 / 20, 20.0)
+    diff = pd.DataFrame({"segment_id": fwd["segment_id"], "k": fwd["horizon_week"] - shift, "r": ratio})
+    piv = diff.pivot_table(index="segment_id", columns="k", values="r")
     if risk["segment_id"].isin(piv.index).mean() < 0.5:
         return None  # lane B's model runs on other segment ids (mock risk on real segments): use the surrogate
     out = risk.copy()
     for k in piv.columns:
         col = f"p30_w{k}"
         if col in out:
-            out[col] = (out[col] + out["segment_id"].map(piv[k]).fillna(0)).clip(0, 0.999)
+            r = out["segment_id"].map(piv[k]).fillna(1.0).values
+            out[col] = (1 - np.exp(-hazard(out[col].values) * r)).clip(0, 0.999)
     return out
 
 

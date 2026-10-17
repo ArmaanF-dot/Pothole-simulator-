@@ -5,7 +5,7 @@ CITY ?= Southampton
 CITIES ?= Southampton Brighton Portsmouth
 SCENARIO ?= rain_then_frost
 
-.PHONY: help ingest features synthetic train predict plan whatif lights serve retrain triage-eval cost demo-check test all
+.PHONY: help ingest features synthetic train predict plan_risk plan whatif lights serve retrain triage-eval cost demo-check test all
 
 help:  ## list every target
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/ :/'
@@ -32,6 +32,9 @@ train:  ## lane B: risk + wear models, real-label model, evals
 	$(PY) -m roadsense.models.real_risk
 
 predict: train  ## lane B: risk_<date>.parquet is written by train
+
+plan_risk:  ## lane B: rank risk_latest with the real-label model (synthetic output kept as risk_synthetic_latest)
+	$(PY) -m roadsense.models.plan_risk
 
 lights:  ## lane B: streetlight Weibull model
 	$(PY) -m roadsense.models.lights
@@ -60,5 +63,5 @@ demo-check:  ## lane C: dry run of the 6 demo steps and 4 failure cases
 test:  ## pytest (small fixtures, no network)
 	$(PY) -m pytest -q
 
-# Run order agreed with lane B: synthetic, train, then synthetic again so crew outcomes select from the model
-all: ingest features synthetic train synthetic lights plan  ## full pipeline
+# Run order (lane B, 17 Oct): synthetic, risk, plan_risk, synthetic again (crew outcomes select from the model), lights
+all: ingest features synthetic train plan_risk synthetic lights plan  ## full pipeline
