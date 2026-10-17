@@ -11,7 +11,7 @@ from roadsense.models import plan_risk, risk
 from roadsense.synthetic import build
 from roadsense.synthetic.common import load_inputs
 
-CFG_A = {"labels": {"snap_m": 25, "frozen_year": 2026, "windows": {
+CFG_A = {"labels": {"snap_m": 25, "frozen_year": 2025, "windows": {
     "Southampton": {"usable": [2015, 2019], "train": [2015, 2017], "test": [2018, 2019]}}}}
 
 
@@ -31,6 +31,7 @@ def plan_world(tmp_path_factory):
     cfg["as_of"] = "2025-06-02"
     cfg["potholes"]["yearly_totals"] = {2023: 600, 2024: 600}
     cfg["city"] = "Southampton"
+    cfg["real_map_cities"] = ["Southampton"]      # exercise the map-only real-history path on the fixture city
     root = tmp_path_factory.mktemp("plan")
     (root / "config.yaml").write_text(yaml.safe_dump(CFG_A))
     build.run(cfg, root=root, verbose=False)
@@ -78,3 +79,15 @@ def test_yearly_total_matches_city_figure(plan_world):
     out = pd.read_parquet(root / "outputs" / "risk_latest.parquet")
     lam = out.drop_duplicates("segment_id")["lambda_year"].sum()
     assert lam == pytest.approx(float(cfg["potholes"]["yearly_totals"][int(cfg["potholes"]["current_year_rate_from"])]))
+
+
+def test_real_history_map_city(plan_world):
+    _, root, seg, res = plan_world
+    out = pd.read_parquet(root / "outputs" / "risk_southampton_latest.parquet")
+    assert res["maps"] == {"Southampton": out["segment_id"].nunique()}
+    assert sorted(out["horizon_week"].unique()) == [1, 2, 3, 4]
+    assert (out["history_source"] == "real").all() and (out["trained_on"] == "real").all()
+    assert not out["uses_synthetic"].any()
+    assert out["wear"].isna().all()
+    assert out[["p7", "p30"]].apply(lambda c: c.between(0, 1)).all().all()
+    assert out["scale_source"].str.startswith("assumed").all()

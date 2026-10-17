@@ -34,6 +34,7 @@ The canonical columns are in `schemas.md` sections 7 and 8 (v2). **horizon_week 
 | File | Notes |
 |---|---|
 | `outputs/risk_<as_of>.parquet` + `risk_latest.parquet` | written by plan_risk: real-label ranking, 4 rows per scored segment; extra columns: history_source, weather_basis, weather_multiplier, p_report_year, lambda_year, rank_pct, inputs_mock, as_of |
+| `outputs/risk_brighton_<as_of>.parquet` + `risk_brighton_latest.parquet` | map only: real-label model, real FixMyStreet history, §7 columns plus city and scale_source; wear blank, weather_multiplier 1.0 |
 | `outputs/risk_synthetic_<as_of>.parquet` + `risk_synthetic_latest.parquet` | the synthetic-trained weekly model (same columns); feeds plan_risk's weather multiplier and lane C's what-if |
 | `outputs/lights_<as_of>.parquet` + `lights_latest.parquet` | extra columns: unit_install_date, burn_hours, replacement_overdue, is_synthetic, model_version, source, as_of |
 | `data/models/` | risk_y7.txt / risk_y30.txt (LightGBM, LF line endings), *_calibrator.pkl (isotonic), risk_eval.json, real_risk_eval.json, lights_weibull.json |

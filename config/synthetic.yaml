@@ -4,6 +4,7 @@
 seed: 2026
 version: "1.0"
 city: Southampton            # synthetic council data, weekly risk and lights cover the target city only
+real_map_cities: [Brighton]  # map-only risk from the real-label model with real FixMyStreet history (no wear/lights/plan)
 as_of: "2026-10-12"          # Monday of the last complete week; generators stop here
 
 paths:
