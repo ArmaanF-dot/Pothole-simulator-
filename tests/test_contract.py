@@ -170,3 +170,109 @@ def test_plan_confirmations():
         "confirmed_source_id is required when confirmed_by is set"
     crew = plan.loc[by == "crew", "confirmed_is_synthetic"].astype(str).str.strip().str.lower()
     assert crew.isin(["true", "false", "1", "0"]).all(), "confirmed_is_synthetic must be true/false on crew rows"
+
+
+# --- additions, 17 Oct evening (schemas.md sections 13-19) ---------------------------------------
+def _is_str(s):
+    return s.dropna().map(lambda v: isinstance(v, str)).all()
+
+
+def _is_bool(s):
+    return pd.api.types.is_bool_dtype(s) or s.dropna().isin([True, False]).all()
+
+
+RISK_EXTRA = {"weather_basis": "str", "inputs_mock": "bool", "as_of": "str", "model_version": "str",
+              "reason_1": "str", "reason_2": "str", "reason_3": "str"}
+RISK_REAL_EXTRA = {"weather_multiplier": "float", "p_report_year": "float", "lambda_year": "float", "rank_pct": "float",
+                   "history_source": "str", "trained_on": "str"}
+
+
+def _check_types(df, spec, name):
+    assert not missing(df, list(spec)), f"{name}: missing {missing(df, list(spec))}"
+    for c, t in spec.items():
+        if t == "str":
+            assert _is_str(df[c]), f"{name}.{c} should be str"
+        elif t == "bool":
+            assert _is_bool(df[c]), f"{name}.{c} should be bool"
+        elif t == "float":
+            assert pd.api.types.is_numeric_dtype(df[c]), f"{name}.{c} should be numeric"
+        elif t == "date":
+            assert pd.to_datetime(df[c].dropna().astype(str), format="%Y-%m-%d", errors="coerce").notna().all(), \
+                f"{name}.{c} should be a YYYY-MM-DD date"
+
+
+@pytest.mark.parametrize("fname", sorted(RISK_FILES))
+def test_risk_extra_columns(fname):
+    r = load(os.path.join(OUT, fname))
+    _check_types(r, RISK_EXTRA, fname)
+    assert r.model_version.str.match(r"^risk@\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$").all(), "model_version is risk@<UTC time>"
+    reasons = pd.concat([r.reason_1, r.reason_2, r.reason_3]).dropna()
+    assert not reasons.str.contains("in the ward last year").any(), "ward weather is never a reason (2-6 values per city)"
+    if fname != "risk_synthetic_latest.parquet":
+        _check_types(r, RISK_REAL_EXTRA, fname)
+        assert r.rank_pct.between(0, 1).all() and (r.lambda_year >= 0).all()
+    if fname == "risk_brighton_latest.parquet":
+        _check_types(r, {"city": "str", "scale_source": "str"}, fname)
+        assert (r.weather_multiplier == 1.0).all()
+
+
+def test_lights_extra_columns():
+    l = load(os.path.join(OUT, "lights_latest.parquet"))
+    _check_types(l, {"unit_install_date": "date", "burn_hours": "float", "replacement_overdue": "bool",
+                     "is_synthetic": "bool", "model_version": "str", "source": "str", "as_of": "str"}, "lights")
+    assert l.model_version.str.startswith("lights@").all()
+
+
+def test_plan_names_and_extra_columns(seg):
+    path = os.path.join(OUT, "prevention_plan_latest.csv")
+    if not os.path.exists(path):
+        pytest.skip("no outputs/prevention_plan_latest.csv yet")
+    plan = pd.read_csv(path)
+    assert not missing(plan, ["highway", "reasons", "cost_logic", "model_version", "history_source", "value_badge",
+                              "preventive_treatment", "labels_synthetic", "wear_synthetic"])
+    links = plan[plan.highway.astype(str).str.endswith("_link")]
+    assert not links.name.astype(str).str.fullmatch(r"Unnamed \w+_link road").any(), \
+        "unnamed slip roads use 'Slip road off ...' or 'Unnamed slip road near <ward>' (section 13)"
+
+
+TRIAGE_REPORT = {"report_id": str, "fms_id": int, "reported_at": str, "lat": float, "lon": float, "title": str,
+                 "category": str, "method": str, "merged_into": (str, type(None)), "status": str,
+                 "segment_id": (str, type(None)), "risk_band": (str, type(None))}
+
+
+def test_triage_caches():
+    import glob
+    import json
+    files = sorted(glob.glob(os.path.join(OUT, "lane_c", "triage_*.json")))
+    files = [f for f in files if not f.endswith("triage_vs_keywords.json")]
+    if not files:
+        pytest.skip("no outputs/lane_c/triage_<city>.json yet")
+    for f in files:
+        t = json.load(open(f, encoding="utf-8"))
+        for k in ["city", "generated_at", "window_days", "count", "methods", "reports"]:
+            assert k in t, f"{os.path.basename(f)}: missing {k}"
+        assert t["count"] == len(t["reports"]) and set(t["methods"]) <= {"gemini", "keyword"}
+        for r in t["reports"]:
+            for k, typ in TRIAGE_REPORT.items():
+                assert k in r and isinstance(r[k], typ), f"{os.path.basename(f)}: {k} should be {typ}"
+            assert r["category"] in {"pothole", "streetlight", "other"}
+            assert r["status"] in {"triaged", "merged", "not on a council road"}
+
+
+def test_brighton_inspection_rows():
+    """schemas.md section 17: inspection rows are real-only, open reports first, no p30 or money."""
+    if not os.path.exists(os.path.join(OUT, "risk_brighton_latest.parquet")):
+        pytest.skip("no Brighton risk file")
+    from roadsense.api.cities import CityView
+    from roadsense.prevent import inputs as I
+    cfg = I.load_config()
+    view = CityView(cfg, "Brighton")
+    out = view.inspection_list(pd.DataFrame(), cfg, top_n=50)
+    assert [s["key"] for s in out["sections"]] == ["open", "risk"]
+    row_keys = {"rank", "section", "segment_id", "name", "ward", "highway", "risk_band", "risk_label", "reasons", "action",
+                "open_report", "open_reports", "history_source", "uses_synthetic"}
+    for r in out["rows"]:
+        assert row_keys <= set(r) and not ({"p30", "p7", "treatment", "cost_planned_gbp"} & set(r))
+        assert isinstance(r["rank"], int) and isinstance(r["reasons"], list) and isinstance(r["open_report"], bool)
+        assert r["risk_band"] in {"top1", "top5", "top10", "rest"} and r["action"] == "Inspect"
+        assert r["history_source"] == "real" and r["uses_synthetic"] is False

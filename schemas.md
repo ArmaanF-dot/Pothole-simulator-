@@ -243,3 +243,90 @@ Source: MapIt (mySociety), boundaries from ONS/OS, OGL, for Southampton and Brig
 `[{name, label, used_for, licence, retrieved_at, data_date, is_synthetic}]`, one entry per real source (OSM, MapIt wards,
 DfT, Open-Meteo, EA flood, FixMyStreet). `retrieved_at` is ISO UTC; `data_date` is the newest date the data describes.
 Lane B appends its synthetic generators (`is_synthetic: true`) or lane C adds them from `data/synthetic/_meta.json`.
+
+---
+
+# Additions, 17 Oct evening (lane B; fields added after sections 7-12 were agreed)
+Each item below says which section it extends. Checked by `tests/test_contract.py`.
+
+## 13. Display road names (extends section 2; computed, not a stored column)
+The page and every output that shows a road name use `roadsense.prevent.inputs.display_names(seg)`:
+OSM `name`, else `ref`, else for an unnamed slip road (`highway` ending `_link`) **"Slip road off <ref or name>"** of the
+road it joins (walking connected unnamed slip-road pieces, up to 6), else **"Unnamed slip road near <ward>"**; any other
+unnamed road stays "Unnamed <highway> road". `segments.parquet` itself is unchanged. Plan CSVs (section 9) and the
+Brighton map/inspection list carry the display name in `name`.
+
+## 14. Extra columns in the risk files (extends section 7)
+| Column | Type | Files | Notes |
+|---|---|---|---|
+| weather_basis | str | all three | `observed`, `forecast`, `climatology_10y`, or `none (...)` for Brighton |
+| weather_multiplier | float | risk_latest, risk_brighton | ward-week weather multiplier applied to the yearly risk; 1.0 for Brighton |
+| p_report_year | float 0–1 | risk_latest, risk_brighton | real-label model's yearly probability of a FixMyStreet report on the segment |
+| lambda_year | float ≥ 0 | risk_latest, risk_brighton | expected potholes a year = risk share × city total (Southampton FOI 2025; Brighton assumed, see `scale_source`) |
+| rank_pct | float 0–1 | risk_latest, risk_brighton | within-city percentile of `p_report_year` (Brighton bands: ≥0.99 top 1%, ≥0.95 top 5%, ≥0.90 top 10%) |
+| inputs_mock | bool | all three | true only if lane A inputs were mocked |
+| as_of | str | all three | `YYYY-MM-DD`, Monday the forecast weeks follow |
+| city | str | risk_brighton | `Brighton` |
+| scale_source | str | risk_brighton | how Brighton's yearly total was set (an assumption: Southampton repairs per km × Brighton road length) |
+
+- `model_version`: `risk@<YYYY-MM-DDTHH:MM>` (UTC run time) on every row of every risk file; `lights@<...>` in section 8.
+- `reason_1..3`: plain English. Last year's ward weather is **never** a reason (only 2–6 distinct values per city).
+  History reasons say whether they come from FixMyStreet (real) or the synthetic council log ("synthetic council log, scaled").
+- `risk_synthetic_latest.parquet` has the section 7 columns plus `weather_basis`, `inputs_mock`, `as_of`;
+  `trained_on = synthetic`.
+
+## 15. Extra columns in the lights file (extends section 8)
+| Column | Type | Notes |
+|---|---|---|
+| unit_install_date | date | install date of the unit in service (after replacements) |
+| burn_hours | float | burn hours on that unit at `as_of` (sunset to sunrise, minus the 01:00–05:30 switch-off from 1 Dec 2023) |
+| replacement_overdue | bool | cumulative failure already ≥ 0.5 |
+| is_synthetic | bool | always true (synthetic lamp register) |
+| model_version | str | `lights@<YYYY-MM-DDTHH:MM>` |
+| source | str | model and synthetic inputs used |
+| as_of | str | `YYYY-MM-DD` |
+
+## 16. Extra columns in the plan CSVs (extends section 9)
+Beyond the section 9 list the plan files also carry: `highway, consequence, consequence_text, reasons` (the three
+reasons joined), `cost_logic` (the £ working as text), `esal_day, traffic_note, weather_source, model_version, as_of,
+labels_synthetic, history_source, wear_synthetic, inputs_mock, p30_w0, value_badge` ("Pays back ×N", "Loss maker ×N",
+"Confirmed: must fix ×N", "Simulated crew report"), and for confirmed rows the segment's own preventive suggestion:
+`preventive_treatment, preventive_treatment_label, preventive_treatment_cost_gbp, preventive_reactive_cost_avoided_gbp,
+preventive_avoided_per_gbp`. `outputs/prevention_plan_worth_treating_<as_of>.csv` has the same columns, `worth_treating` rows only.
+
+## 17. Map-only city endpoints (extends section 10)
+- `GET /reports/open?city=Brighton` → `{count, window_days, urgency: null, city, source, retrieved_at, reports: [{id, category,
+  reported_at, status, lat, lon, title}]}`. Same 120-day open window as Southampton; titles redacted.
+- `GET /plan/inspection?city=Brighton&top_n=50` → `{city, header, badge, sections, count, open_report_rows, top_n,
+  window_days, model_version, trained_on, uses_synthetic, history_source, as_of, path, rows}`.
+  `sections`: `[{key: "open", label: "Open reports (inspect first)", count, note}, {key: "risk", label: "Highest predicted risk", count, note}]`.
+  Each row: `rank (int), section ("open"|"risk"), segment_id, name (section 13), ward, highway, risk_band
+  ("top1"|"top5"|"top10"|"rest"), risk_label, reasons (list of str), action ("Inspect"), open_report (bool),
+  open_reports ([{id, reported_at, title}]), history_source, uses_synthetic (bool)`. No p30, treatment or £ fields.
+  400 for the home city (use `/plan/prevention`).
+- `GET /triage/city?city=Brighton` → the triage cache (section 18); 404 if not built.
+- `GET /segments/{id}?city=Brighton` → card with `risk_band, risk_label, reasons, badge, note` (no p30 or rank numbers).
+
+## 18. Triage caches: `outputs/lane_c/triage_<city>.json` (lane C writes with `python -m roadsense.agent.city_triage <city>`)
+Read-only triage for a map-only city, so the demo never waits on live Gemini. Only Brighton is built on main;
+Southampton's triage is live (`POST /reports`) and its queue lives in `outputs/lane_c/state.json`, which is not in git.
+| Field | Type | Notes |
+|---|---|---|
+| city, generated_at, window_days, limit, count, methods, source, retrieved_at, note | str / int / list | `methods` ⊆ {`gemini`, `keyword`}; `count` = number of reports |
+| reports[] | list of objects | most recent first |
+| reports[].report_id, fms_id | str, int | `fms-<id>` and the FixMyStreet request id |
+| reports[].reported_at, lat, lon, title | str, float, float, str | title redacted (no names, house numbers or postcodes) |
+| reports[].category, method, model | str, str, str or null | category ∈ {`pothole`, `streetlight`, `other`} |
+| reports[].segment_id, segment_name, ward, snap_m | str or null, str or null, str or null, float or null | null when not within 30 m of a council road |
+| reports[].risk_band, risk_label, rank_pct | str or null, str or null, float or null | from `risk_<city>_latest.parquet` |
+| reports[].merged_into, status | str or null, str | status ∈ {`triaged`, `merged`, `not on a council road`} |
+
+## 19. Lane B model and evaluation files (`data/models/`, `reports/`)
+- `data/models/real_risk_model.txt` (LightGBM, LF line endings) + `real_risk_model.json` (`features`, `city_categories`,
+  `trained_rows`, `trained_cities`, `city_total_potholes_year`, `history_years`, `history_source`, `generated_at`):
+  the model that ranks `risk_latest` and `risk_brighton_latest`.
+- `data/models/risk_y7.txt`, `risk_y30.txt` + `*_calibrator.pkl`: synthetic-trained weekly model (`risk_synthetic_latest`, what-if).
+- `data/models/real_risk_eval.json`, `eval_ci.json`, `risk_eval.json`, `lights_weibull.json`: evaluation results behind
+  `reports/risk_eval.md`, `reports/real_risk_eval.md`, `reports/lights_eval.md`.
+- `outputs/lane_c/demo_check.md` (demo dry run) and `outputs/lane_c/token_log.jsonl` (Gemini token counts for
+  `reports/cost.md`): lane C working files, not read by other lanes.
