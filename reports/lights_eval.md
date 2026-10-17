@@ -1,6 +1,6 @@
 # Streetlight model evaluation
 
-_Generated 2026-10-17T13:49:43+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
+_Generated 2026-10-17T16:00:50+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
 
 **The lamp register and fault history are SYNTHETIC** (Generators 3 and 4). The burn-hour clock is real: astral sunset to sunrise for Southampton, minus the council's 01:00 to 05:30 switch-off from 2023-12-01.
 

@@ -3,6 +3,7 @@
 # except the FOI pothole totals under potholes.yearly_totals.
 seed: 2026
 version: "1.0"
+city: Southampton            # synthetic council data, weekly risk and lights cover the target city only
 as_of: "2026-10-12"          # Monday of the last complete week; generators stop here
 
 paths:
