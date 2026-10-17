@@ -1,0 +1,177 @@
+{
+ "generated_at": "2026-10-17T21:15:21+00:00",
+ "test": {
+  "Southampton": {
+   "model": {
+    "point": 0.6483480989294943,
+    "ci95": [
+     0.5630680679249953,
+     0.7458434480367262
+    ]
+   },
+   "baseline": {
+    "point": 0.3368401624215578,
+    "ci95": [
+     0.23074107142857145,
+     0.40123698203900793
+    ]
+   },
+   "diff": {
+    "point": 0.3115079365079365,
+    "ci95": [
+     0.27248927405744644,
+     0.4027697638445692
+    ]
+   },
+   "share_model_beats_baseline": 1.0,
+   "n": {
+    "reports": 381,
+    "segments": 8145,
+    "wards": 17,
+    "years": [
+     2018,
+     2019
+    ],
+    "resamples": 1000,
+    "seed": 2026
+   }
+  },
+  "Brighton": {
+   "model": {
+    "point": 0.5071262601855656,
+    "ci95": [
+     0.45013559917671725,
+     0.5503162358565482
+    ]
+   },
+   "baseline": {
+    "point": 0.21684940914903858,
+    "ci95": [
+     0.17914482969638745,
+     0.2658633837137704
+    ]
+   },
+   "diff": {
+    "point": 0.290276851036527,
+    "ci95": [
+     0.23331103463620312,
+     0.32030090207237677
+    ]
+   },
+   "share_model_beats_baseline": 1.0,
+   "n": {
+    "reports": 802,
+    "segments": 8179,
+    "wards": 23,
+    "years": [
+     2023,
+     2024,
+     2025
+    ],
+    "resamples": 1000,
+    "seed": 2026
+   }
+  }
+ },
+ "frozen_2026": {
+  "Southampton": {
+   "model": {
+    "point": 0.15151515151515152,
+    "ci95": [
+     0.041666666666666664,
+     0.3044314381270902
+    ]
+   },
+   "baseline": {
+    "point": 0.12121212121212122,
+    "ci95": [
+     0.02939075630252101,
+     0.27599676724137917
+    ]
+   },
+   "diff": {
+    "point": 0.030303030303030304,
+    "ci95": [
+     -0.11121794871794871,
+     0.16227477477477467
+    ]
+   },
+   "share_model_beats_baseline": 0.562,
+   "n": {
+    "reports": 33,
+    "segments": 8145,
+    "wards": 17,
+    "years": [
+     2026
+    ],
+    "resamples": 1000,
+    "seed": 2026
+   }
+  },
+  "Brighton": {
+   "model": {
+    "point": 0.26666666666666666,
+    "ci95": [
+     0.1142063492063492,
+     0.5
+    ]
+   },
+   "baseline": {
+    "point": 0.16666666666666666,
+    "ci95": [
+     0.02775900900900901,
+     0.29411764705882354
+    ]
+   },
+   "diff": {
+    "point": 0.1,
+    "ci95": [
+     -0.031275201612903224,
+     0.34615384615384615
+    ]
+   },
+   "share_model_beats_baseline": 0.907,
+   "n": {
+    "reports": 30,
+    "segments": 8179,
+    "wards": 23,
+    "years": [
+     2026
+    ],
+    "resamples": 1000,
+    "seed": 2026
+   }
+  }
+ },
+ "frozen_sentences": [
+  "Southampton: only 33 reports in January to October 2026, too few for this result to mean anything (model 15% vs baseline 12%).",
+  "Brighton: only 30 reports in January to October 2026, too few for this result to mean anything (model 27% vs baseline 17%)."
+ ],
+ "top_features": [
+  {
+   "feature": "length_m",
+   "share": 0.24318049266779274,
+   "plain": "Length of the road segment (longer pieces have more surface to fail)"
+  },
+  {
+   "feature": "city_code",
+   "share": 0.14827329709339895,
+   "plain": "Which city (reporting habits differ between cities)"
+  },
+  {
+   "feature": "wx_frost_hours",
+   "share": 0.11846989101616463,
+   "plain": "Frost hours in the area last year"
+  },
+  {
+   "feature": "rep_nb_prev1",
+   "share": 0.0806830764723916,
+   "plain": "Potholes reported on the neighbouring roads last year"
+  },
+  {
+   "feature": "bus_routes",
+   "share": 0.07295620509255828,
+   "plain": "Number of bus routes using the road"
+  }
+ ]
+}
