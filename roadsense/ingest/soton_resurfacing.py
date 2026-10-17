@@ -24,6 +24,11 @@ is matched on name alone or by distance. A segment named "A / B" matches road A 
 of a road ("junction X to junction Y"); the match is every segment of that road in that ward, so it can include
 segments outside the scheme's extent.
 
+Manual links: data/resurfacing_manual_matches.csv (council_name, segment_id, reason, how_checked), written by hand
+after a map check. A council row named there is linked only to the listed segments, with match_status "manual" and
+the reason and check carried into the output; this replaces (does not add to) its automatic matches, so a false
+name match such as "A33 Millbrook Road West (Flyover)" -> every Millbrook Road West segment is removed.
+
 A leading road number ("A33 Millbrook Road West") is dropped before matching; a bracketed part ("(Flyover)") is kept
 as the extent, not used for matching. Cost and area are filled only where a page gives them. Data only: nothing
 here feeds scoring or ranking. Source: Southampton City Council (via the Wayback Machine for the removed pages).
@@ -44,7 +49,8 @@ ABBREV = {"ave": "avenue", "rd": "road", "st": "street", "cres": "crescent", "cl
           "ln": "lane", "gdns": "gardens", "gr": "grove", "pl": "place", "sq": "square", "tce": "terrace"}
 COLS = ["source", "source_url", "retrieved_at", "archived_at", "table", "scheme", "road", "extent", "ward_text",
         "work_type", "date_text", "year", "status", "cost_gbp", "area_m2", "match_status", "segment_id",
-        "segment_name", "segment_ward"]
+        "segment_name", "segment_ward", "match_reason", "match_checked"]
+MANUAL = os.path.join(ROOT, "data", "resurfacing_manual_matches.csv")  # hand-checked links (council_name, segment_id, ...)
 WAYBACK = {"dft-quarterly": ("Southampton City Council, DfT Highway Maintenance Funding Quarterly Report (July 2024), "
                              "via Wayback Machine", "https://www.southampton.gov.uk/travel-transport/roadworks/"
                              "roads-closures-improvements/dft-highway-maintenance-funding-quarterly-report/"),
@@ -176,8 +182,22 @@ def load_wayback(path):
     return rows
 
 
-def match(rows, seg):
+def load_manual(path=MANUAL):
+    """{normalised council name: [(segment_id, reason, how_checked), ...]} from the hand-checked file."""
+    if not os.path.exists(path):
+        return {}
+    out = {}
+    for r in pd.read_csv(path).itertuples():
+        out.setdefault(" ".join(r.council_name.lower().split()), []).append((r.segment_id, r.reason, r.how_checked))
+    return out
+
+
+def match(rows, seg, manual=None):
+    """Exact road name + ward match. A council row listed in the manual file is linked ONLY to the segments listed
+    there (match_status "manual"): its automatic matches, if any, are dropped."""
+    manual = manual or {}
     seg = seg[seg["city"] == "Southampton"]
+    by_id = seg.set_index("segment_id")
     idx = {}
     for r in seg.itertuples():
         for part in str(r.name or "").split(" / "):
@@ -185,12 +205,19 @@ def match(rows, seg):
     known_roads = {k[0] for k in idx}
     out = []
     for row in rows:
+        man = manual.get(" ".join(row["scheme"].lower().split()))
+        if man:
+            for sid, reason, how in man:
+                s = by_id.loc[sid]
+                out.append({**row, "match_status": "manual", "segment_id": sid, "segment_name": s["name"],
+                            "segment_ward": s["ward"], "match_reason": reason, "match_checked": how})
+            continue
         wards = [w for w in re.split(r"/", row["ward_text"]) if w.strip()]
         hits = [s for w in wards for s in idx.get((norm_road(row["road"]), norm_ward(w)), [])]
         if hits:
             for s in hits:
                 out.append({**row, "match_status": "matched", "segment_id": s.segment_id, "segment_name": s.name,
-                            "segment_ward": s.ward})
+                            "segment_ward": s.ward, "match_reason": "road name and ward equal after normalisation"})
         else:
             why = "road in another ward" if norm_road(row["road"]) in known_roads else "road name not found"
             out.append({**row, "match_status": f"unmatched: {why}", "segment_id": None, "segment_name": None,
@@ -212,12 +239,13 @@ def main():
                 rows.append(r)
     seg = pd.read_parquet(os.path.join(ROOT, "data", "processed", "segments.parquet"),
                           columns=["segment_id", "city", "name", "ward"])
-    df = match(rows, seg)
+    df = match(rows, seg, load_manual())
     df.to_csv(OUT, index=False)
     schemes = df.drop_duplicates(["source", "table", "scheme", "ward_text", "work_type", "date_text", "cost_gbp"])
     for src, g in schemes.groupby("source", sort=False):
-        ok = g["match_status"] == "matched"
-        print(f"{src}: {len(g)} scheme rows, {ok.sum()} matched, {(~ok).sum()} unmatched")
+        ok = g["match_status"].isin(["matched", "manual"])
+        print(f"{src}: {len(g)} scheme rows, {(g['match_status'] == 'matched').sum()} matched, "
+              f"{(g['match_status'] == 'manual').sum()} manual, {(~ok).sum()} unmatched")
         for r in g[~ok].itertuples():
             print(f"  unmatched: {r.road} [{r.ward_text}] ({r.match_status})")
     print(f"{df['segment_id'].nunique()} segments matched in all; wrote {OUT}")
