@@ -63,6 +63,9 @@ async function loadPlan() {
   renderPlanRows();
 }
 
+// council scheme lists: carriageway work done in the last 2 years (display only, not used in the ranking)
+const treatedTag = (t, long) => !t ? "" : `<div class="small"><span class="vb treated" title="${esc(t.work + ": " + t.scheme + " (" + t.source + (t.match === "manual" ? ", manual match" : "") + ")")}">${esc(t.label)}</span>${long ? ` ${esc(t.work)}. Check before treating again.` : ""}</div>`;
+
 function renderPlanRows() {
   const p = state.plan;
   if (!p) return;
@@ -78,7 +81,7 @@ function renderPlanRows() {
         <div class="reasons">${esc(r.reasons)}</div>
         <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : r.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
-      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div></td>
+      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div>${treatedTag(r.recently_treated)}</td>
       <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
         ${r.confirmed_pothole ? `<div class="small muted">${r.confirmed_by === "crew" ? "crew " : "FixMyStreet "}${esc(r.confirmed_source_id)} · ${esc(r.confirmed_by)}${r.confirmed_is_synthetic ? " " + badge("SYNTHETIC") : ""}</div>` : ""}
         ${r.confirmed_pothole && r.preventive_treatment ? `<div class="small muted">Also suggested: ${esc(r.preventive_treatment_label)} £${fmt(r.preventive_treatment_cost_gbp, 0)} (×${fmt(r.preventive_avoided_per_gbp, 2)})</div>` : ""}</td></tr>`).join("")
@@ -188,7 +191,7 @@ async function showSegment(id, fly) {
       <div>Model</div><div class="small">${esc(s.model_version)} · ${esc(state.meta ? state.meta.badges.model_label : s.trained_on)}${s.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div>
       <div>Consequence</div><div>×${fmt(s.consequence, 2)} ${esc(s.consequence_text)}</div>
       <div>Load</div><div>${fmt(s.esal_day, 0)} ESAL/day · ${esc(s.traffic_note)}${s.load.count_year ? " (DfT count year " + s.load.count_year + ")" : ""}</div>
-      <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}</div>
+      <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}${treatedTag(s.recently_treated, true)}</div>
       ${s.ref ? `<div>Road</div><div>${esc(s.ref)}${s.bus_routes ? " · " + s.bus_routes + " bus routes" : ""}</div>` : ""}
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
       <div>Data dates</div><div class="small">risk as of ${esc(dd.risk_as_of)}<br>${esc(dd.forecast.message)}<br>FixMyStreet retrieved ${esc((dd.fixmystreet_retrieved_at || "").slice(0, 10))}</div>
