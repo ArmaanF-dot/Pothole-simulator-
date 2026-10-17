@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -155,6 +156,8 @@ def run(cfg: dict | None = None, root: Path | None = None, forecast_as_of: str |
         tag = f"_{scenario}" if scenario else ""
         out = od / f"prevention_plan_{risk_meta['as_of']}{tag}.csv"
         plan[[c for c in PLAN_COLS + ["provisional"] if c in plan]].to_csv(out, index=False, encoding="utf-8-sig")
+        if not scenario:  # schemas.md section 9: a fixed-name copy for the API (no symlinks)
+            shutil.copyfile(out, od / "prevention_plan_latest.csv")
     if verbose:
         n = sc["scored"].sum()
         print(f"scored {n:,} segments ({seg_meta['kind']} segments, {risk_meta['kind']} risk as of {risk_meta['as_of']})")

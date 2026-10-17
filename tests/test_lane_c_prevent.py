@@ -78,6 +78,7 @@ def test_plan_is_prevention_band_rising_and_ranked(cfg, world, tmp_path):
     assert set(out["treatment"]) <= {"crack_sealing", "surface_dressing", "patch", "resurface", "permanent_repair"}
     assert "87.80" in out["cost_logic"].iloc[0] and "56.94" in out["cost_logic"].iloc[0]
     assert res["path"].name.startswith("prevention_plan_")
+    assert (res["path"].parent / "prevention_plan_latest.csv").read_bytes() == res["path"].read_bytes()
 
 
 def test_plan_ward_filter(cfg, world):
