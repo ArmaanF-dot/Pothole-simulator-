@@ -132,7 +132,7 @@ async function showCitySegment(id) {
   const s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ city: state.city }));
   detail(`<h3>${esc(s.name)}</h3><div class="muted small">${esc(s.segment_id)} · ${esc(s.highway)} · ${esc(s.ward)} · ${esc(s.city)}</div>
     <p><span class="vb ${s.risk_band === "rest" ? "pay" : "must"}">${esc(s.risk_label)}</span> ${badge(s.badge, s.badge.startsWith("100%") ? "real" : "")}</p>
-    <div class="kv"><div>Risk P30</div><div>${fmt(s.p30)} (rank ${fmt(100 * s.rank_pct, 1)}th percentile)</div>
+    <div class="kv"><div>Risk band</div><div>${esc(s.risk_label)} <span class="small muted">(rank within ${esc(s.city)})</span></div>
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
       <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} reports · history ${esc(s.history_source)}</div></div>
     <p class="small muted">${esc(s.note)}</p>`);

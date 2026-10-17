@@ -69,7 +69,8 @@ class CityView:
 
     def geojson(self) -> dict:
         feats = []
-        for r in self.df[["segment_id", "name", "ward", "highway", "p30", "rank_pct", "risk_band"]].to_dict("records"):
+        # bands and reasons only: no P30 or rank numbers for the second city (map view, not a forecast)
+        for r in self.df[["segment_id", "name", "ward", "highway", "risk_band"]].to_dict("records"):
             r = {k: (None if isinstance(v, float) and not np.isfinite(v) else v) for k, v in r.items()}
             r["band"] = {"top1": "critical", "top5": "high", "top10": "prevention"}.get(r["risk_band"], "monitor")
             feats.append({"type": "Feature", "properties": r,
@@ -86,7 +87,6 @@ class CityView:
         clean = lambda v: None if v is None or (isinstance(v, float) and not np.isfinite(v)) else (
             v.item() if hasattr(v, "item") else v)
         return {"city": self.city, "segment_id": sid, "name": r["name"], "ward": r.get("ward"), "highway": r["highway"],
-                "p30": clean(r["p30"]), "p7": clean(r.get("p7")), "rank_pct": clean(r["rank_pct"]),
                 "risk_band": r["risk_band"], "risk_label": RANK_LABEL[r["risk_band"]],
                 "reasons": [x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str)],
                 "badge": self.badge(), **self.meta,
