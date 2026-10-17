@@ -249,6 +249,7 @@ class Service:
                "risk_weeks": weeks, "load": load,
                "reports": [q for q in self.queue if q.get("segment_id") == sid],
                "outcomes": [o for o in self.outcomes if o["segment_id"] == sid],
+               "recently_treated": self.recently_treated().get(sid),
                "data_dates": self.data_dates(), "badges": self.badges()}
         return out
 
@@ -277,14 +278,26 @@ class Service:
                 cmp_ = cmp_[cmp_["ward"] == ward]
             movers = records(cmp_.head(10).reset_index(), ["segment_id", "name", "ward", "highway", "esal_day", "bus_stop",
                                                           "urgency_base", "urgency_scn", "band_scn", "p30_peak_change"])
+        rows, wrows = records(p, P.PLAN_COLS), records(w, P.PLAN_COLS)
+        tr = self.recently_treated()
+        for r in rows + wrows:  # display only
+            r["recently_treated"] = tr.get(r["segment_id"])
         return {"movers": movers, "as_of": self.risk_meta.get("as_of"), "trained_on": self.risk_meta.get("trained_on"),
                 "model_label": self.model_label(),
                 "model_version": self.risk_meta.get("model_version"), "ward": ward, "scenario": scenario, "scenario_method": method,
                 "freshness": f, "provisional": f["provisional"], "count": len(p), "costs": self.cfg["costs"],
                 "horizon": "reactive repairs avoided over each treatment's service life (years): "
                            + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in self.cfg["treatments"]["life_years"].items()),
-                **self.badges(), "rows": records(p, P.PLAN_COLS),
-                "worth": {**P.worth_summary(w), "rows": records(w, P.PLAN_COLS)}}
+                **self.badges(), "rows": rows, "worth": {**P.worth_summary(w), "rows": wrows},
+                "recently_treated_rule": "carriageway work completed or in progress within 2 years before the as-of date "
+                                         "(council scheme lists; display only, not used in ranking)"}
+
+    def recently_treated(self) -> dict:
+        """{segment_id: flag} from data/processed/soton_resurfacing.csv, cached (display only)."""
+        if getattr(self, "_treated", None) is None:
+            from roadsense.api import treated
+            self._treated = treated.recent(treated.load(str(self.root)), self.risk_meta.get("as_of"))
+        return self._treated
 
     def lights_view(self, ward=None, due=None, dark=None, limit=500, due_days: int | None = None) -> dict:
         L = self.lights.merge(self.seg[["segment_id", "ward", "name"]], on="segment_id", how="left")
