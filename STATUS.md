@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 17 Oct 2026, 13:40_
+_Last updated: 17 Oct 2026, 13:55_
 
 ## Done
 - `pull_fixmystreet.py` pulls FixMyStreet road/pavement reports for Southampton, Portsmouth and Brighton (2008–2026).
@@ -21,7 +21,8 @@ _Last updated: 17 Oct 2026, 13:40_
   - BCP and the other data gaps logged in `DATA_GAPS.md`.
   - **M1 done for Southampton (steps 1–2 below):** `data/processed/segments.parquet`, 8,145 segments ≤200 m, 600 km (126 km main road), with ward, bus_stop, bus_routes, junction and owner. All road classes are kept, and `is_main_road` marks A/B roads. Run with `.venv` Python: `python -m roadsense.ingest.osm Southampton` then `python -m roadsense.features.segments Southampton`. Lane B's loader reads it unchanged.
   - **M2 done for Southampton (step 3 below):** `data/processed/fms_snapped.csv` (reports + segment_id + snap_dist_m) and `labels_segment_year.csv` (8,145 segments × 2015–19 + 2026). 976 of 997 in-window reports snap within 25 m. Positives a year: 2015 157 · 2016 216 · 2017 222 (train) · 2018 252 · 2019 129 (test) · 2026 33 (frozen). Run: `python -m roadsense.features.labels`.
-  - **M3a done for Southampton (step 4 below): traffic load** `data/processed/load.parquet` from DfT AADF (OGL, 132 count points): hgv_bus_aadf + esal_day per segment, averaged over train years 2015–17. Sources: 314 count, 604 same_road, 7,227 class_median. Run: `python -m roadsense.features.load`. **Weather (M3b) still to do:** source and licence not confirmed yet.
+  - **M3a done for Southampton (step 4 below): traffic load** `data/processed/load.parquet` from DfT AADF (OGL, 132 count points): hgv_bus_aadf + esal_day per segment, averaged over train years 2015–17. Sources: 314 count, 604 same_road, 7,227 class_median. Run: `python -m roadsense.features.load`. 
+  - **M3b done for Southampton: weekly weather** `data/processed/weather_weekly.parquet`, 10,591 ward-weeks (17 wards, Dec 2014 → Nov 2026; the latest weeks use the 16-day forecast and are marked `uses_forecast`). **Source: Open-Meteo, CC BY 4.0, free tier non-commercial** (fine for the hackathon, credit it in the README). Hourly temperature, rain, snow and soil at each ward's centre. Every window uses only hours before `week_start`. Run: `python -m roadsense.ingest.weather Southampton` then `python -m roadsense.features.weather_feats Southampton`. pytest: 8 passed, 5 skipped (lane B files not on this branch yet).
 
 ## Next (in order)
 0. **Decided: labels use all roads**, with `is_main_road` as a feature (only 27% of Southampton reports are on A/B roads).
@@ -38,7 +39,7 @@ _Last updated: 17 Oct 2026, 13:40_
 5. **Baseline first:** rank segments by last year's reports → top-10% capture on the test window.
 6. **Model:** gradient boosting on [hgv_bus_aadf, bus_routes, highway class, length, reports in previous 1–3 yrs].
    Compare to baseline + simple formula (load × past reports). Bootstrap the test set for a range.
-7. **"When" model (city-month):** monthly report totals vs freeze-thaw days + rainfall (historical weather source: TBC, check licence).
+7. **"When" model (city-month):** monthly report totals vs freeze-thaw days + rainfall (weather: Open-Meteo, CC BY 4.0, non-commercial; in `weather_weekly.parquet`).
 8. Repeat 1–4 for Brighton, then Portsmouth, only after Southampton runs end to end (target 18:00).
 - Credit FixMyStreet (mySociety) with the pull date in the main README.
 - Decide how to handle the data gaps below in any city comparison.
