@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 17 Oct 2026, 12:40_
+_Last updated: 17 Oct 2026, 12:55_
 
 ## Done
 - `pull_fixmystreet.py` pulls FixMyStreet road/pavement reports for Southampton, Portsmouth and Brighton (2008–2026).
@@ -11,8 +11,18 @@ _Last updated: 17 Oct 2026, 12:40_
   defects removed using title (then description) keywords; street names like "Tisbury Road" ignored.
   Removed: Brighton 203, Portsmouth 12, Southampton 64. Hand check of 25 each (Brighton):
   kept ≈ 24/25 genuine road defects, removed ≈ 22/25 genuine pavement. **Train on this file, not fms_dedup.csv.**
+- **Lane A, branch `lane-a-data` (not merged yet):**
+  - **M0 done:** `schemas.md` is the data contract for lane B (segments, load, weekly weather, labels). It uses lane B's
+    column names and lists 3 open questions for them (snap 15 vs 25 m, segment length, residential roads).
+  - FixMyStreet ingest moved to `roadsense/ingest/fixmystreet.py` (`python -m roadsense.ingest.fixmystreet`). It replaces
+    `pull_fixmystreet.py` + `clean_labels.py` and rebuilds the same 5,127 labels exactly.
+    New outputs go to `data/processed/` (labels now have `in_window`). Settings are in `config.yaml`. Raw pulls go to `data/raw/` (git-ignored).
+  - Southampton "Street lighting" reports added: `data/processed/fms_streetlights.csv` (211), for lane B's streetlight check.
+  - BCP and the other data gaps logged in `DATA_GAPS.md`.
 
 ## Next (in order)
+0. Lane B to answer the open questions in `schemas.md`. At merge, delete the old `data/fms_*.csv` (lane B still points at `data/fms_dedup.csv`).
+   Lane A milestones M1–M3 follow steps 1–4 below and write to `data/processed/` as `schemas.md` describes.
 1. **Road segments (OpenStreetMap, ODbL):** `osmnx.graph_from_place("Southampton, UK", network_type="drive")`;
    keep highway = primary/secondary/tertiary (≈ A/B roads); project to EPSG:27700; cut into ~200 m segments;
    save `data/segments_southampton.gpkg` (id, road name, ref, highway, length_m, geometry).

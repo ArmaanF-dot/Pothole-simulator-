@@ -1,5 +1,14 @@
 # Data gaps and cuts
 
+## Lane A (data)
+- **Bournemouth (BCP) has no FixMyStreet data.** BCP Council (MapIt area 152188) does not take FixMyStreet reports: every report there shows "Not reported to council", and the Open311 API returns nothing for that agency (checked 17 Oct 2026). Dropped from all lanes.
+- **Southampton labels only from 2015.** 2011–14 came through the council's old FixMyStreet-branded site, which inflates counts. 2020–2022 has no reports at all. Usable window 2015–2019 (`config.yaml: labels.windows`). Train 2015–17, test 2018–19.
+- **Brighton road reports fall away from mid-2025.** Only one "Pavement and road repairs" report in May–June 2026. Usable window to 2025. Test 2023–25.
+- **2026 is partial (Jan–Oct) and small** (Southampton 35, Portsmouth 46, Brighton 32 road-surface reports). It is a "frozen model" check only, reported with n and a bootstrap range.
+- **Portsmouth is small** (321 labels after cleaning). It is extra training data / a transfer test, not a headline result.
+- **Counts measure FixMyStreet use, not pothole rates.** Scores rank segments within each city and year. Raw totals are never compared across cities.
+- **Pavement filter is keyword-based.** A hand check of 25 Brighton reports each way found about 24/25 kept reports were genuine road defects and 22/25 removed ones genuine pavement defects. Some error stays in the labels.
+
 ## Lane B (models)
 - **Lane A inputs mocked (M4, 2026-10-17).** Segments, esal_day and weekly weather were not on main when M4 was built, so the generators ran on deterministic mocks (`data/synthetic/mock_inputs/`, `input_source=mock`, about 7,900 grid segments in 17 mock wards). Re-run `python -m roadsense.synthetic` after Merge 1 to regenerate on the real segment map, weather and load.
 - **Resurfacing age before the recorded date.** Generator 1 records one last_resurfaced date per segment. For weeks before that date, age is assumed to be the class maximum (15/25/40 years) plus the time since, i.e. the segment was on its previous cycle. Assumption, not council data.
