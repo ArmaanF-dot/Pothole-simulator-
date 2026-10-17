@@ -149,3 +149,16 @@ def test_summary_sentence_says_matches_when_interval_spans_zero():
          "_n": {"reports": 381}}
     s = real_risk.summary_sentence("Southampton", r, "test years")
     assert "matches the baseline rather than beats it" in s and "85%" in s
+
+
+def test_ward_bootstrap_reproducible_and_paired():
+    from roadsense.models import eval_ci
+    df, scores = _tiny_test_set()
+    df["ward"] = ["W%d" % (int(s[1:]) % 6) for s in df["segment_id"]]
+    sc = {"model": scores["model"], "baseline": scores["last_year_reports"]}
+    a = eval_ci.ward_bootstrap(df, sc, n=100, seed=2026)
+    b = eval_ci.ward_bootstrap(df, sc, n=100, seed=2026)
+    assert a == b
+    assert a["n"]["wards"] == 6 and a["n"]["resamples"] == 100
+    assert a["model"]["ci95"][0] <= a["model"]["point"] <= a["model"]["ci95"][1]
+    assert 0 <= a["share_model_beats_baseline"] <= 1
