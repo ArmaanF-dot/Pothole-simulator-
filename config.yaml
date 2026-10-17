@@ -49,6 +49,8 @@ labels:
 osm:
   # Tried in order: the main server is often full
   overpass_urls: [https://overpass-api.de/api, https://maps.mail.ru/osm/tools/overpass/api]
+  timeout_s: 900                 # Overpass query + HTTP timeout (bus-route queries 504 at 240 s)
+  tries: 4
   mapit_url: https://mapit.mysociety.org
   # MapIt area id of each council (for ward boundaries: children of type UTW / MTW)
   council_area: {Southampton: 2567, Portsmouth: 2657, Brighton: 2614}

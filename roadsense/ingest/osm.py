@@ -32,10 +32,10 @@ def http_json(cfg, url, data=None, tries=4):
     req = urllib.request.Request(url, data=data, headers={"User-Agent": ua})
     for attempt in range(tries):
         try:
-            with urllib.request.urlopen(req, timeout=300) as r:
+            with urllib.request.urlopen(req, timeout=cfg["osm"]["timeout_s"] + 60) as r:
                 return json.load(r)
         except Exception as e:
-            wait = 10 * (attempt + 1)
+            wait = 30 * (attempt + 1)
             print(f"  retry in {wait}s ({e})")
             time.sleep(wait)
     raise RuntimeError("giving up on " + url)
@@ -44,8 +44,8 @@ def http_json(cfg, url, data=None, tries=4):
 def bus_routes(cfg, bounds):
     """Count route=bus relations per member way inside the boundary's bounding box."""
     w, s, e, n = bounds
-    q = f'[out:json][timeout:240];rel["route"="bus"]({s},{w},{n},{e});out body;'
-    data = http_json(cfg, ox.settings.overpass_url + "/interpreter", urllib.parse.urlencode({"data": q}).encode(), tries=2)
+    q = f'[out:json][timeout:{cfg["osm"]["timeout_s"]}];rel["route"="bus"]({s},{w},{n},{e});out body;'
+    data = http_json(cfg, ox.settings.overpass_url + "/interpreter", urllib.parse.urlencode({"data": q}).encode(), tries=cfg["osm"]["tries"])
     counts = {}
     for rel in data.get("elements", []):
         for way in {m["ref"] for m in rel.get("members", []) if m["type"] == "way"}:
@@ -102,6 +102,7 @@ def download(cfg, city, refresh=False):
 def download_any_server(cfg, city, refresh=False):
     """Try each Overpass server in turn (the public ones are often at capacity)."""
     ox.settings.http_user_agent = cfg["fixmystreet"]["user_agent"]
+    ox.settings.requests_timeout = cfg["osm"]["timeout_s"]
     for url in cfg["osm"]["overpass_urls"]:
         ox.settings.overpass_url = url
         try:
