@@ -23,10 +23,13 @@ should be in the video. After that merge, re-check every name and number below o
 2. Point at the plan: "50 segments to treat this week, as of 2026-10-12"; model "trained on real reports · history
    synthetic".
 3. Click the **Worth treating** tab. Read the header: "11 roads pay back · 3 confirmed potholes · £21,665 treatment ·
-   £29,859 reactive cost avoided". Say: "confirmed potholes come first, they're a repair we have to make; then roads
-   where prevention pays for itself."
-4. Click **All roads** to go back. Do not open row 1 (Millbrook Flyover): its top three reasons are all from the
-   synthetic council repair log.
+   £29,859 reactive cost avoided". Point at rows 1-3, the only Worth treating rows with no synthetic reason: **Castle
+   Road** (Bitterne Park), **Garton Road** (Peartree), **Furze Road / Furze Close** (Sholing), each "open FixMyStreet
+   report, confirmed by keyword", badge **Confirmed: must fix ×1.54** (permanent repair £56.94 now instead of £87.80
+   reactive later), urgency 70. Castle Road's report is 9864063, the one triaged at 1:15. Say: "confirmed potholes come
+   first, they're a repair we have to make; then roads where prevention pays for itself."
+4. Click **All roads** to go back. Do not open Millbrook Flyover (row 1 in All roads, row 4 in Worth treating): its top
+   three reasons are all from the synthetic council repair log.
 
 ## 0:45-1:15 Why a road is flagged (real reasons only)
 
@@ -36,10 +39,14 @@ should be in the video. After that merge, re-check every name and number below o
    - Reasons, all from real data: "HGV and bus flow 577 a day", "heavy axle load (802 ESAL/day)", "long segment (186 m)".
    - Traffic: "DfT count on this segment" (2022 count, high confidence). Consequence: A-road, bus route, cycle route.
    - Urgency 40.5, prevention band; P30 for the next four weeks 0.01 rising to 0.03 (weeks 1-3 Open-Meteo forecast,
-     week 4 climatology).
+     week 4 climatology). Wear (88%, part of urgency) carries the **SYNTHETIC** badge: only the reasons are real.
    - Cost logic: "Patch now, schedule resurfacing" £90 against £16.67 of reactive repairs avoided over its 5-year life.
-3. Say: "real traffic and axle load put this road on the list, but the cost logic says a patch doesn't pay back yet, so
-   it waits. The reasons and the numbers are on screen; the officer decides."
+3. Say: "real traffic and axle load flag this road, but the tool says don't spend yet, so it's not in Worth treating.
+   The reasons and the numbers are on screen; the officer decides." (Say "flagged", not "high risk": in the app "High"
+   is the 70-89 urgency band.)
+   - Alternative with bus routes as a reason: Portswood row 2, the other **The Avenue** (173 m, `SOU-229102664-00`):
+     "8 bus routes use this road", "HGV and bus flow 769 a day", DfT count on the same road, **Loss maker ×0.27**
+     (£90 against £23.99).
 4. **Ward** back to **All wards**.
 
 ## 1:15-1:45 Triage one real report
