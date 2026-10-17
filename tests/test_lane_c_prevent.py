@@ -161,8 +161,6 @@ def test_normalise_contract_long_risk(world):
 
 
 def test_real_segments_copy_with_mock_risk(cfg):
-    if not (I.resolve(cfg, "lane_c_copy_dir") / "segments.parquet").exists():
-        pytest.skip("no copy of lane A segments")
     seg, meta = I.load_segments(cfg, root=I.ROOT)
     if meta["kind"] != "real":
         pytest.skip("real segments not in use")
