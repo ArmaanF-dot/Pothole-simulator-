@@ -49,7 +49,8 @@ async function loadMeta() {
 async function loadPlan() {
   const p = await api("/plan/prevention?" + qs({ ward: state.ward, scenario: state.scenario,
     forecast_as_of: new URLSearchParams(location.search).get("forecast_as_of") }));
-  $("#plan-head").innerHTML = `${p.count} segments to treat this week${state.ward ? " in " + esc(state.ward) : ""}, as of ${esc(p.as_of)}.`
+  const asOf = p.as_of ? new Date(p.as_of + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "unknown";
+  $("#plan-head").innerHTML = `${p.count} segments to treat${state.ward ? " in " + esc(state.ward) : ""}, week of ${esc(asOf)} (as_of ${esc(p.as_of)}).`
     + (p.provisional ? " " + badge("PROVISIONAL", "prov") : "")
     + (p.scenario ? ` What-if <b>${esc(p.scenario)}</b> (${esc(p.scenario_method)}).` : "")
     + (p.model_label ? ` Model ${esc(p.model_version || "")}: <b>${esc(p.model_label)}</b>.` : "")

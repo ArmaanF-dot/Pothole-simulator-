@@ -64,6 +64,8 @@ What it does, per city (Southampton, Brighton):
    1000 per request, the date range is split while a request hits the cap). New reports go through the same
    road-surface, de-duplication and pavement rules as `roadsense.ingest.fixmystreet`, and every title is passed
    through `redact()` before it is stored. Descriptions are never stored.
+   The same pull starts at the beginning of the 120-day open window, so it also rechecks the status of every stored
+   report in that window and updates open/closed (a report closed upstream leaves the open layer and the plan).
    At most one incremental pull per UTC day: a second run the same day reuses that day's reports and only refreshes
    the weather. Requests to FixMyStreet and Open-Meteo send `User-Agent: RoadSense/1.0 (SotonShip26 hackathon; <contact>)`,
    with `<contact>` from `ROADSENSE_CONTACT` in `.env` (the project's GitHub URL if unset).
@@ -88,9 +90,13 @@ Set `ROADSENSE_LIVE=0` to force the committed snapshot.
 refresh", at 06:00 every day (as the current user, while logged on). It runs `scripts\run_refresh.bat`, which
 logs to `data\live\scheduler.log`. Remove it with `scripts\schedule_refresh.bat /delete`.
 
-**Limits.** The risk `as_of` week stays the frozen model's (`config/synthetic.yaml`), so the four forecast weeks
-are fixed; a refresh updates the weather and reports inside them. Status changes to older reports (open to
-closed) are not re-pulled, only new reports.
+**as_of follows the calendar.** Each refresh sets `as_of` to the most recent Monday on or before today (UTC) and
+scores the four weeks after it with the frozen models; the plan header shows that week. If an input cannot be
+built for the new `as_of`, the refresh stops (exit 1, previous build kept) and the log says exactly what is
+missing. Today that matters for Southampton: its history features count the SYNTHETIC council repair log, which
+ends at the synthetic generator's `as_of` (`data/synthetic/_meta.json`, 2026-10-12). From the next Monday a
+Southampton refresh stops until the synthetic data is regenerated to the new `as_of`; Brighton (real FixMyStreet
+history) keeps refreshing with `--city Brighton` until its label table runs out (end of 2026).
 
 ## How well it works
 

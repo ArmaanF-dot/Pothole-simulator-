@@ -121,16 +121,45 @@ def clean_new_reports(cfg_a: dict, raw: list[dict], stored: pd.DataFrame) -> pd.
     return pd.DataFrame(rows, columns=CLEAN_COLS)
 
 
-def refresh_reports(get_json, cfg_a: dict, stored: pd.DataFrame, cities: list[str], now: datetime) -> tuple[pd.DataFrame, dict]:
-    """stored + new cleaned reports for `cities`, pulled since each city's latest stored report."""
+def recheck_status(stored: pd.DataFrame, raw: list[dict], city: str, window_start: datetime) -> tuple[pd.DataFrame, dict]:
+    """Update status/updated of the city's stored reports requested inside the open window from the
+    upstream rows. A stored report missing upstream (hidden or deleted) keeps its status and is counted."""
     req = pd.to_datetime(stored["requested"], utc=True, format="mixed")
+    win = (stored["city"] == city) & (req >= pd.Timestamp(window_start))
+    up = {int(r["id"]): r for r in raw if r.get("id") is not None}
+    out = stored.copy()
+    c = {"in_window": int(win.sum()), "open_to_closed": 0, "closed_to_open": 0, "not_returned": 0}
+    for i in stored.index[win]:
+        r = up.get(int(stored.at[i, "id"]))
+        if r is None:
+            c["not_returned"] += 1
+            continue
+        old, new = str(stored.at[i, "status"]), str(r["status"])
+        if new != old:
+            c["open_to_closed" if new == "closed" else "closed_to_open"] += 1
+            out.at[i, "status"] = new
+            out.at[i, "updated"] = r["updated"]
+    c["changed"] = c["open_to_closed"] + c["closed_to_open"]
+    return out, c
+
+
+def refresh_reports(get_json, cfg_a: dict, stored: pd.DataFrame, cities: list[str], now: datetime,
+                    open_days: int = 120) -> tuple[pd.DataFrame, dict]:
+    """stored + new cleaned reports for `cities`, and the current status of every stored report inside the
+    open window. One date-window pull per city and category covers both: it starts at the earlier of the
+    latest stored report and the start of the open window, so it returns the window's reports with their
+    status as of now."""
+    req = pd.to_datetime(stored["requested"], utc=True, format="mixed")
+    window_start = now - timedelta(days=open_days)
     new_frames, counts = [], {}
     for city in cities:
         latest = req[stored["city"] == city].max()
-        since = (latest.to_pydatetime() if pd.notna(latest) else now - timedelta(days=30))
+        since = min(latest.to_pydatetime() if pd.notna(latest) else window_start, window_start)
         raw = pull_new_reports(get_json, cfg_a, city, since, now)
+        stored, status = recheck_status(stored, raw, city, window_start)
         new = clean_new_reports(cfg_a, raw, stored)
-        counts[city] = {"since": since.isoformat(timespec="seconds"), "pulled": len(raw), "new_labels": len(new)}
+        counts[city] = {"since": since.isoformat(timespec="seconds"), "pulled": len(raw), "new_labels": len(new),
+                        "status_recheck": status}
         new_frames.append(new)
     new_all = pd.concat([f for f in new_frames if len(f)], ignore_index=True) if any(len(f) for f in new_frames) else None
     out = stored if new_all is None else pd.concat([stored, new_all.astype({"id": stored["id"].dtype})], ignore_index=True)

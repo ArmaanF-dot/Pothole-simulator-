@@ -17,6 +17,11 @@ from roadsense.refresh.validate import validate
 REPO = run.REPO
 NOW = datetime(2026, 10, 18, 6, 0, tzinfo=timezone.utc)
 SEG = pd.read_parquet(REPO / "data" / "processed" / "segments.parquet")
+FMS = pd.read_csv(REPO / "data" / "processed" / "fms_roads_clean.csv")
+# a stored Southampton report that is open in the snapshot and inside the 120-day open window at NOW
+_t = pd.to_datetime(FMS["requested"], utc=True, format="mixed")
+CLOSED_UPSTREAM = FMS[(FMS["city"] == "Southampton") & (FMS["status"] == "open") &
+                      (_t >= pd.Timestamp(NOW) - pd.Timedelta(days=120))].iloc[0]
 
 
 def _sites():
@@ -33,7 +38,16 @@ def fake_http(now=NOW, fail=False):
         if fail:
             raise RuntimeError("simulated network failure")
         if "open311" in url:
-            if "agency_responsible=2567" in url and "service_code=Potholes" in url:
+            from urllib.parse import parse_qs, urlsplit
+            q = {k: v[0] for k, v in parse_qs(urlsplit(url).query).items()}
+            rows = []
+            if q["agency_responsible"] == "2567" and q["service_code"] == CLOSED_UPSTREAM["category"]:
+                c = CLOSED_UPSTREAM
+                rows.append({"service_request_id": int(c["id"]), "service_name": c["category"],
+                             "requested_datetime": c["requested"], "updated_datetime": (now - timedelta(days=1)).isoformat(),
+                             "status": "closed", "lat": str(c["lat"]), "long": str(c["lon"]), "title": str(c["title"]),
+                             "description": ""})
+            if q["agency_responsible"] == "2567" and q["service_code"] == "Potholes":
                 t = (now - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
                 return {"service_requests": [
                     {"service_request_id": 99000001, "service_name": "Potholes", "requested_datetime": t,
@@ -42,8 +56,8 @@ def fake_http(now=NOW, fail=False):
                      "description": "Large pothole in the road, cars swerving"},
                     {"service_request_id": 99000002, "service_name": "Potholes", "requested_datetime": t,
                      "updated_datetime": t, "status": "open", "lat": str(b["lat"]), "long": str(b["lon"]),
-                     "title": "Pothole in carriageway", "description": "Pothole in the road surface"}]}
-            return {"service_requests": []}
+                     "title": "Pothole in carriageway", "description": "Pothole in the road surface"}] + rows}
+            return {"service_requests": rows}
         if "open-meteo" in url:
             start = (pd.Timestamp(now).floor("D") - pd.Timedelta(days=92)).tz_localize(None)
             times = pd.date_range(start, periods=(92 + 16) * 24, freq="h")
@@ -179,3 +193,46 @@ def test_one_fixmystreet_pull_per_day(built):
     assert any("open-meteo" in u for u in http.calls)
     info = live.build_info(live.current_build(built["base"]))
     assert "skipped" in info["fixmystreet"]
+
+
+def test_report_closed_upstream_leaves_the_open_set(built):
+    from roadsense.agent import city_triage as CT
+    build = built["base"] / NOW.strftime("%Y%m%dT%H%M%SZ")             # the first build (later tests move current)
+    f = pd.read_csv(build / "data" / "processed" / "fms_roads_clean.csv")
+    rid = int(CLOSED_UPSTREAM["id"])
+    assert f.loc[f["id"] == rid, "status"].iloc[0] == "closed"
+    _, _, cfg_c = run.stage_configs(build, REPO)
+    open_ids = set(CT.open_reports(cfg_c, "Southampton", build, now=NOW)["id"].astype(int))
+    assert rid not in open_ids
+    snap_open = set(CT.open_reports(cfg_c, "Southampton", REPO, now=NOW)["id"].astype(int))
+    assert rid in snap_open, "the report was open in the committed snapshot"
+    rc = live.build_info(build)["fixmystreet"]["Southampton"]["status_recheck"]
+    assert rc["open_to_closed"] >= 1 and rc["in_window"] >= 1
+
+
+def test_later_refresh_moves_as_of_and_forecast_weeks(built):
+    later = datetime(2026, 10, 27, 6, 0, tzinfo=timezone.utc)          # Tuesday: as_of -> Monday 26 Oct
+    code = run.refresh(cities=["Brighton"], now=later, get_json=fake_http(later), client=None, base=built["base"],
+                       verbose=False)
+    assert code == 0, (built["base"] / "refresh.log").read_text()
+    build = live.current_build(built["base"])
+    info = live.build_info(build)
+    assert info["as_of"] == "2026-10-26"
+    assert info["forecast_weeks"]["Brighton"] == ["2026-11-02", "2026-11-09", "2026-11-16", "2026-11-23"]
+    r = pd.read_parquet(build / "outputs" / "risk_brighton_latest.parquet")
+    assert set(r["as_of"]) == {"2026-10-26"}
+    fc = pd.read_parquet(build / "data" / "processed" / "weather_forecast_weekly.parquet")
+    assert (fc.loc[fc["city"] == "Brighton", "week_start"] > "2026-10-27").all()
+
+
+def test_southampton_stops_when_synthetic_history_ends(built):
+    base = built["base"]
+    before = live.current_build(base)
+    later = datetime(2026, 10, 20, 6, 0, tzinfo=timezone.utc)          # as_of 19 Oct: after the synthetic log ends
+    http = fake_http(later)
+    code = run.refresh(cities=["Southampton"], now=later, get_json=http, client=None, base=base, verbose=False)
+    assert code == 1
+    assert live.current_build(base) == before
+    msg = (base / "refresh.log").read_text(encoding="utf-8").splitlines()[-1]
+    assert "cannot build as_of 2026-10-19" in msg and "synthetic council history" in msg and "potholes_seg_8w" in msg
+    assert not http.calls, "it must stop before any network call"

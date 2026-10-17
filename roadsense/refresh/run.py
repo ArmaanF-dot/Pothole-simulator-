@@ -59,11 +59,68 @@ def stage_configs(stage: Path, repo: Path) -> tuple[dict, dict, dict]:
     return cfg_a, cfg_m, cfg_c
 
 
+# --- as_of ---------------------------------------------------------------------------------------
+HISTORY_FEATS = ["potholes_seg_8w", "potholes_nb_8w", "potholes_seg_12m", "potholes_nb_12m",
+                 "days_since_resurfacing", "treatments_2y"]
+
+
+def monday_on_or_before(now: datetime) -> str:
+    d = pd.Timestamp(now)
+    d = (d.tz_convert("UTC") if d.tzinfo else d).normalize()
+    return str((d - pd.Timedelta(days=d.weekday())).date())
+
+
+def check_history(as_of: str, cities: list[str], stage: Path, repo: Path) -> None:
+    """Inputs that do not depend on new weather: stop (RefreshError) and say exactly what is missing."""
+    a = pd.Timestamp(as_of)
+    problems = []
+    if "Southampton" in cities:
+        meta = json.loads((repo / "data" / "synthetic" / "_meta.json").read_text(encoding="utf-8"))
+        rep = pd.to_datetime(pd.read_csv(repo / "data" / "synthetic" / "potholes.csv", usecols=["reported_date"])["reported_date"])
+        first, last = rep.min(), rep.max()
+        if pd.Timestamp(meta["as_of"]) < a:
+            problems.append(
+                f"Southampton: the synthetic council history (data/synthetic, generated to as_of {meta['as_of']}, last "
+                f"repair {last.date()}) has no repairs or treatments from {meta['as_of']} to {as_of}. The weekly "
+                f"model's history features {', '.join(HISTORY_FEATS)} count repairs and treatments dated before as_of, "
+                f"so they cannot be built for {as_of}. Regenerate the synthetic data to as_of >= {as_of} (set as_of in "
+                f"config/synthetic.yaml, then python -m roadsense.synthetic), or refresh with --city Brighton.")
+        if first > pd.Timestamp(f"{a.year - 3}-01-01") or last < pd.Timestamp(f"{a.year - 1}-12-01"):
+            problems.append(f"Southampton: the real-label model's history input needs complete synthetic repair years "
+                            f"{a.year - 3}-{a.year - 1}; data/synthetic/potholes.csv covers {first.date()} to {last.date()}.")
+    lab = pd.read_csv(stage / "data" / "processed" / "labels_segment_year.csv", usecols=["city", "year"])
+    for city in [c for c in cities if c != "Southampton"]:
+        have = set(lab.loc[lab["city"] == city, "year"])
+        miss = [y for y in (a.year - 1, a.year) if y not in have]
+        if miss:
+            problems.append(f"{city}: data/processed/labels_segment_year.csv has no rows for {miss}; the real-label model "
+                            f"scores year {a.year} from FixMyStreet reports in {a.year - 1} (rep_prev1), so {city} cannot "
+                            f"be scored for {as_of}. Rebuild the labels with that year (roadsense.features.labels).")
+    if problems:
+        raise RefreshError(f"cannot build as_of {as_of}: " + " | ".join(problems))
+
+
+def check_weather(as_of: str, cities: list[str], stage: Path) -> None:
+    """After the forecast refresh: the yearly weather the real model needs (the year before as_of) for every ward."""
+    a = pd.Timestamp(as_of)
+    wx = pd.read_parquet(stage / "data" / "processed" / "weather_weekly.parquet", columns=["city", "ward", "week_start"])
+    seg = pd.read_parquet(stage / "data" / "processed" / "segments.parquet", columns=["city", "ward"])
+    yr = pd.to_datetime(wx["week_start"]).dt.year
+    problems = []
+    for city in cities:
+        wards = set(seg.loc[seg["city"] == city, "ward"])
+        have = set(wx.loc[(wx["city"] == city) & (yr == a.year - 1), "ward"])
+        if wards - have:
+            problems.append(f"{city}: weather_weekly.parquet has no {a.year - 1} weeks for wards {sorted(wards - have)}")
+    if problems:
+        raise RefreshError(f"cannot build as_of {as_of}: " + " | ".join(problems))
+
+
 # --- steps ---------------------------------------------------------------------------------------
-def step_reports(get_json, cfg_a: dict, stage: Path, cities: list[str], now: datetime) -> dict:
+def step_reports(get_json, cfg_a: dict, stage: Path, cities: list[str], now: datetime, open_days: int) -> dict:
     p = stage / "data" / "processed" / "fms_roads_clean.csv"
     stored = pd.read_csv(p)
-    out, counts = fetch.refresh_reports(get_json, cfg_a, stored, cities, now)
+    out, counts = fetch.refresh_reports(get_json, cfg_a, stored, cities, now, open_days=open_days)
     out.to_csv(p, index=False)
     return counts
 
@@ -156,8 +213,12 @@ def refresh(cities: list[str] | None = None, dry_run: bool = False, now: datetim
         say(f"refresh {name}: cities {', '.join(cities)}; starting from {'live build ' + src.name if src != repo else 'committed snapshot'}")
         prepare(stage, src, repo)
         cfg_a, cfg_m, cfg_c = stage_configs(stage, repo)
+        as_of = monday_on_or_before(now)
         info = {"started_at": now.isoformat(timespec="seconds"), "cities": cities, "dry_run": dry_run,
-                "base": src.name if src != repo else "snapshot", "as_of": cfg_m["as_of"]}
+                "base": src.name if src != repo else "snapshot", "as_of": as_of, "previous_as_of": cfg_m["as_of"]}
+        cfg_m["as_of"] = as_of                   # the frozen models score the four weeks after this Monday
+        say(f"  as_of {as_of} (config/synthetic.yaml has {info['previous_as_of']})")
+        check_history(as_of, cities, stage, repo)
         prev = live.current_build(base)
         prev_info = live.build_info(prev) if prev is not None else {}
         if prev_info.get("fixmystreet_pulled_on") == now.date().isoformat():
@@ -165,11 +226,12 @@ def refresh(cities: list[str] | None = None, dry_run: bool = False, now: datetim
             info["fixmystreet"] = {"skipped": f"already pulled today in {prev.name}"}
             info["fixmystreet_pulled_on"] = prev_info["fixmystreet_pulled_on"]
         else:
-            info["fixmystreet"] = step_reports(get_json, cfg_a, stage, cities, now)
+            info["fixmystreet"] = step_reports(get_json, cfg_a, stage, cities, now, cfg_c["triage"]["open_report_days"])
             info["fixmystreet_pulled_on"] = now.date().isoformat()
         say(f"  FixMyStreet: {info['fixmystreet']}")
         info["weather"] = step_weather(get_json, cfg_a, stage, cities, now)
         say(f"  Open-Meteo forecast: { {c: v['weeks'] for c, v in info['weather'].items()} }")
+        check_weather(as_of, cities, stage)
         if client == "auto":
             from roadsense.agent.triage import gemini_client
             client = gemini_client()
@@ -177,7 +239,10 @@ def refresh(cities: list[str] | None = None, dry_run: bool = False, now: datetim
         if "Southampton" in cities:
             score.weekly_southampton(cfg_m, stage, md)
         info["risk_rows"] = score.real_risk(cfg_m, stage, md, cities, now)
-        say(f"  re-scored with frozen models: {info['risk_rows']}")
+        info["forecast_weeks"] = {c: sorted(str(w) for w in pd.read_parquet(
+            stage / "outputs" / ("risk_latest.parquet" if c == "Southampton" else f"risk_{c.lower()}_latest.parquet"),
+            columns=["week_start"])["week_start"].unique()) for c in cities}
+        say(f"  re-scored with frozen models: {info['risk_rows']}; forecast weeks {info['forecast_weeks']}")
         info["triage"] = {}
         if "Southampton" in cities:
             triaged, info["triage"]["Southampton"] = step_triage_home(cfg_c, stage, "Southampton", client, now)
