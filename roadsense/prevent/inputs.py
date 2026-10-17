@@ -79,12 +79,16 @@ def load_segments(cfg: dict, root: Path | None = None) -> tuple[pd.DataFrame, di
                     if c in load]
             seg = seg.drop(columns=[c for c in keep if c != "segment_id" and c in seg]).merge(
                 load[keep], on="segment_id", how="left")
-        cp = d / "segment_context.parquet"  # schemas.md 2b: cycle_route, near_school_hospital (missing = false)
-        if cp.exists():
-            ctx = pd.read_parquet(cp)[["segment_id", "cycle_route", "near_school_hospital"]]
-            seg = seg.drop(columns=[c for c in ["cycle_route", "near_school_hospital"] if c in seg]).merge(
-                ctx, on="segment_id", how="left")
-            seg[["cycle_route", "near_school_hospital"]] = seg[["cycle_route", "near_school_hospital"]].fillna(False).astype(bool)
+        # cycle_route / near_school_hospital: columns on segments.parquet (agreed 17 Oct); fall back to the
+        # earlier separate segment_context.parquet; a missing column means false
+        ctx_cols = ["cycle_route", "near_school_hospital"]
+        cp = d / "segment_context.parquet"
+        if not all(c in seg for c in ctx_cols) and cp.exists():
+            ctx = pd.read_parquet(cp)
+            ctx = ctx[["segment_id"] + [c for c in ctx_cols if c in ctx and c not in seg]]
+            seg = seg.merge(ctx, on="segment_id", how="left")
+        for c in ctx_cols:
+            seg[c] = seg[c].astype("boolean").fillna(False).astype(bool) if c in seg else False
         meta = {"name": "segments", "path": _rel(p, root), "kind": kind, "retrieved_at": _mtime(p),
                 "load_path": _rel(lp, root) if lp.exists() else None}
         return _segment_defaults(seg), meta

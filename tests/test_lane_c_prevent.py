@@ -184,3 +184,25 @@ def test_horizon_weeks_one_to_four_and_forecast_time(world):
     assert r.attrs["forecast_retrieved_at"] == "2026-10-17T12:36+00:00"
     assert r["forecast_retrieved_at_w0"].notna().all() and ("forecast_retrieved_at_w3" not in r or r["forecast_retrieved_at_w3"].isna().all())
     assert set(r["weather_basis_w3"]) == {"climatology_10y"}
+
+
+def test_three_city_segments_with_context_columns(cfg, tmp_path, world):
+    seg = world["segments"].assign(city="Southampton", cycle_route=False, near_school_hospital=False)
+    seg.loc[seg.index[:5], "cycle_route"] = True
+    other = seg.head(20).assign(city="Brighton", segment_id=lambda d: "BRI-" + d["segment_id"])
+    d = tmp_path / "data" / "processed"
+    d.mkdir(parents=True)
+    pd.concat([seg, other]).to_parquet(d / "segments.parquet")
+    loaded, meta = I.load_segments(cfg, root=tmp_path)
+    assert meta["kind"] == "real" and (loaded["segment_id"].str[:4] != "BRI-").all()
+    assert loaded["cycle_route"].sum() == 5 and loaded["near_school_hospital"].dtype == bool
+    sc = P.score(loaded, world["risk"], cfg)
+    assert "cycle route" in sc.loc[sc["cycle_route"] & sc["scored"], "consequence_text"].iloc[0]
+
+
+def test_context_columns_missing_mean_false(cfg, tmp_path, world):
+    d = tmp_path / "data" / "processed"
+    d.mkdir(parents=True)
+    world["segments"].to_parquet(d / "segments.parquet")
+    loaded, _ = I.load_segments(cfg, root=tmp_path)
+    assert not loaded["cycle_route"].any() and not loaded["near_school_hospital"].any()
