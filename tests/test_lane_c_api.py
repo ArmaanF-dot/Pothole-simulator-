@@ -284,3 +284,11 @@ def test_all_models_busy_falls_back_to_keywords(root):
     fake = FakeGemini(fail_models=set(TR.models(I.load_config())))
     wo = Service(root=root, client=fake).triage_report({"fms_id": 111})
     assert wo["method"].startswith("keyword_baseline (gemini unavailable") and wo["category"] == "pothole"
+
+
+def test_open_meteo_attribution_on_page():
+    web = I.ROOT / "roadsense" / "web"
+    html = (web / "index.html").read_text(encoding="utf-8")
+    js = (web / "app.js").read_text(encoding="utf-8")
+    assert "Weather data by Open-Meteo.com" in html and "https://open-meteo.com/" in html
+    assert js.count("OPEN_METEO") >= 4  # banner, segment weather weeks, footer
