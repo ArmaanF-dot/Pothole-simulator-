@@ -101,6 +101,8 @@ async function loadMap() {
       "line-color": ["case", ["==", ["get", "status"], "National Highways road, not scored"], "#9e9e9e",
         ["match", ["get", "band"], "critical", BAND_COLOR.critical, "high", BAND_COLOR.high, "prevention", BAND_COLOR.prevention, BAND_COLOR.monitor]],
       "line-opacity": ["case", ["==", ["get", "status"], "National Highways road, not scored"], 0.5, 0.9] } });
+    state.map.addLayer({ id: "segments-hl", type: "line", source: "segments", filter: ["==", ["get", "segment_id"], ""],
+      paint: { "line-color": "#0d47a1", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 7, 16, 18], "line-opacity": 0.85 } }, "segments");
     state.map.on("click", "segments", (e) => { e.preventDefault(); showSegment(e.features[0].properties.segment_id); });
     state.map.on("mouseenter", "segments", () => state.map.getCanvas().style.cursor = "pointer");
     state.map.on("mouseleave", "segments", () => state.map.getCanvas().style.cursor = "");
@@ -120,6 +122,7 @@ async function loadMap() {
       new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Open FixMyStreet report</b><br>${esc(p.title)}<br>Reported ${esc(p.date)}${otherCity() ? "" : " · urgency 100"}`).addTo(state.map); });
   }
   state.map.setLayoutProperty("open", "visibility", "visible");  // the selected city's open reports (same open window)
+  state.gj = gj;
   return gj;
 }
 
@@ -143,10 +146,24 @@ async function showCitySegment(id) {
     <p class="small muted">${esc(s.note)}</p>`);
 }
 
+// highlight a segment on the map and, with fly, fit the map to it (rows in the plan / inspection list)
+function focusSegment(id, fly) {
+  if (!state.mapReady || !state.map.getLayer("segments-hl")) return false;
+  state.map.setFilter("segments-hl", ["==", ["get", "segment_id"], id]);
+  const f = (state.gj ? state.gj.features : []).find((x) => x.properties.segment_id === id);
+  if (!f || !fly) return !!f;
+  const b = new maplibregl.LngLatBounds();
+  (f.geometry.type === "MultiLineString" ? f.geometry.coordinates.flat() : f.geometry.coordinates).forEach((c) => b.extend(c));
+  const c = state.map.getContainer(), p = Math.min(80, c.clientWidth / 6, c.clientHeight / 4);  // padding must fit inside the map
+  state.map.fitBounds(b, { padding: { top: p, bottom: p, left: p, right: Math.min(c.clientWidth / 2, p + 390) }, maxZoom: 17 });  // clear of the road card
+  return true;
+}
+
 async function showSegment(id, fly) {
+  const found = focusSegment(id, fly);
   if (otherCity()) return showCitySegment(id);
   const s = await api(`/segments/${encodeURIComponent(id)}?` + qs({ scenario: state.scenario }));
-  if (fly && state.mapReady) state.map.flyTo({ center: [s.lon, s.lat], zoom: 16 });
+  if (fly && !found && state.mapReady) state.map.flyTo({ center: [s.lon, s.lat], zoom: 16 });
   if (s.status !== "scored") return detail(`<h3>${esc(s.name)}</h3><p><b>${esc(s.status)}</b></p>`);
   const dd = s.data_dates;
   detail(`<h3>${esc(s.name)}</h3><div class="muted small">${esc(s.segment_id)} · ${esc(s.highway)} · ${esc(s.ward)}</div>
@@ -230,7 +247,7 @@ async function loadLights() {
 
 async function loadSources() {
   const s = await api("/sources");
-  $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span class="${x.is_synthetic ? "home-only" : ""}"><span title="${esc(x.used_for)}">${esc(x.name)}</span>: ${esc(x.label)}${x.is_synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
+  $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span class="${x.is_synthetic || x.name === "repair_costs" ? "home-only" : ""}"><span title="${esc(x.used_for)}">${esc(x.name)}</span>: ${esc(x.label)}${x.is_synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
     + (state.meta ? `<span class="home-only"><b>Risk model:</b> ${esc(state.meta.badges.model_label)}</span>` : "")
     + `<span>Map © OpenStreetMap contributors</span><span>${OPEN_METEO}</span>`;
 }
@@ -284,7 +301,7 @@ async function loadInspection(c) {
   $("#inspect-rows").innerHTML = p.sections.filter((s) => s.count).map((s) =>
     `<tr class="section"><th colspan="4">${esc(s.label)} <span class="muted small">${s.count} · ${esc(s.note)}</span></th></tr>`
     + p.rows.filter((r) => r.section === s.key).map(row).join("")).join("") || `<tr><td colspan="4" class="muted">No segments.</td></tr>`;
-  document.querySelectorAll("#inspect-rows tr[data-id]").forEach((tr) => tr.onclick = () => showCitySegment(tr.dataset.id));
+  document.querySelectorAll("#inspect-rows tr[data-id]").forEach((tr) => tr.onclick = () => showSegment(tr.dataset.id, true));
 }
 
 // page title per city; the home city keeps the original text

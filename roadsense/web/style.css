@@ -28,7 +28,7 @@ main { flex: 1; display: grid; grid-template-columns: minmax(360px, 44%) 1fr; mi
 table.rows { width: 100%; border-collapse: collapse; }
 table.rows th { text-align: left; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); padding: 4px; }
 table.rows td { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; }
-table.rows tr { cursor: pointer; } table.rows tr:hover td { background: #f3f6fb; }
+table.rows tr { cursor: pointer; } table.rows tr:hover td { background: #f3f6fb; } table.rows tr.section { cursor: default; }
 .reasons { font-size: 12px; color: var(--muted); }
 .u { display: inline-block; min-width: 36px; text-align: center; border-radius: 4px; color: #fff; font-weight: 700; padding: 0 4px; }
 .u.critical { background: var(--critical); } .u.high { background: var(--high); }
