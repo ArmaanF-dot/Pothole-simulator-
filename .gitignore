@@ -1,3 +1,5 @@
 __pycache__/
 # Raw FixMyStreet pull has free-text descriptions (can contain names/house numbers): keep local only
 data/fms_raw.csv
+# Raw API pulls (free text) stay local
+data/raw/

@@ -1,0 +1,51 @@
+# Lane A (data) settings. Column definitions are in schemas.md.
+paths:
+  raw_dir: data/raw              # git-ignored: API pulls with free text
+  processed_dir: data/processed
+
+cities:
+  # FixMyStreet Open311 agency ids and each council's own category names (checked 17 Oct 2026).
+  # Bournemouth (BCP, MapIt 152188) is left out: it takes no FixMyStreet reports. See DATA_GAPS.md.
+  Southampton:
+    code: SOU
+    osm_place: "Southampton, UK"
+    fms_agency: "2567"
+    fms_road_categories: [Potholes, Roads/highways, Pavements/footpaths]
+    fms_other_categories: [Street lighting]
+  Portsmouth:
+    code: POR
+    osm_place: "Portsmouth, UK"
+    fms_agency: "2657"
+    fms_road_categories: [Potholes, Roads/highways, Pavements/footpaths]
+    fms_other_categories: []
+  Brighton:
+    code: BRI
+    osm_place: "Brighton and Hove, UK"
+    fms_agency: "2614"
+    fms_road_categories: [Pavement and road repairs]
+    fms_other_categories: []
+
+fixmystreet:
+  base_url: https://www.fixmystreet.com/open311/v2/requests.json
+  user_agent: "SotonShip26 student hackathon (contact via team)"
+  first_year: 2008
+  pause_s: 1.5                   # between requests: be polite
+  # A report counts as a road-surface defect if its category is Potholes, or it is in one of these
+  # general road categories and its text mentions a surface word.
+  surface_categories: [Roads/highways, Pavement and road repairs]
+  surface_words: [pothole, pot hole, hole, crater, sunken, sinking, sink, tarmac, surface,
+                  crack, rut, raised, uneven, dip]
+  dedup_m: 20                    # same defect = same city, within 20 m ...
+  dedup_days: 30                 # ... and 30 days of an earlier kept report
+
+labels:
+  snap_m: 25                     # report -> nearest segment (lane B uses 15; snap_dist_m is stored)
+  frozen_year: 2026              # Jan-Oct 2026 = "frozen model" check only
+  windows:                       # agreed in STATUS.md; years inclusive
+    Southampton: {usable: [2015, 2019], train: [2015, 2017], test: [2018, 2019]}
+    Brighton:    {usable: [2008, 2025], train: [2008, 2022], test: [2023, 2025]}
+    Portsmouth:  {usable: [2008, 2025], train: [2008, 2025], test: null}
+
+segments:
+  max_length_m: 200
+  main_road_highways: [primary, secondary, tertiary, primary_link, secondary_link, tertiary_link]
