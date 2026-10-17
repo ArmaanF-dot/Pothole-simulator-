@@ -63,7 +63,7 @@ One row per piece of road, all cities stacked. Built from OSM (ODbL) `network_ty
 | name | str | blank if unnamed |
 | ref | str | e.g. `A33`; blank if none |
 | highway | str | OSM class (`primary`, `secondary`, `tertiary`, `residential`, …) |
-| is_main_road | bool | highway in primary/secondary/tertiary (+ `_link`): the A/B roads the FixMyStreet labels are scored on |
+| is_main_road | bool | highway in primary/secondary/tertiary (+ `_link`), i.e. A/B roads. A feature: labels cover all roads |
 | ward | str | council ward the midpoint falls in |
 | length_m | float | ≤ `segments.max_length_m` (200) |
 | lat, lon | float | midpoint |
@@ -96,11 +96,15 @@ One row per ward × week, exactly as lane B asked for. **Every window uses only 
 | Column | Type | Notes |
 |---|---|---|
 | city | str | |
-| segment_id | str | main roads only (`is_main_road`) |
+| segment_id | str | every segment in `segments.parquet` (all road classes) |
+| is_main_road | bool | copied from segments, so it can be used as a feature |
 | year | int | |
 | n_reports | int | snapped reports in that year |
 | had_report | int | 0/1 |
 | split | str | `train` / `test` / `frozen_2026` / `excluded`, from `config.yaml: labels.windows` |
+
+Rows: every segment × every year in the city's usable window, plus 2026. Reports count if they are within `labels.snap_m` (25 m).
+Built by `python -m roadsense.features.labels`.
 
 ## 6. Street lamps (optional): `data/processed/street_lamps.parquet`
 `osm_node_id, city, lon, lat, source` (OSM `highway=street_lamp` nodes).
@@ -117,4 +121,4 @@ One row per ward × week, exactly as lane B asked for. **Every window uses only 
 1. **Snap radius:** your draft uses 15 m and STATUS.md says 25 m. `snap_dist_m` is stored so either works. Pick one for the headline numbers.
 2. **Segment length:** lane A cuts to ≤200 m (STATUS.md). Your mock uses 75 m. Tell us if the models need shorter pieces.
 3. **Residential roads:** they are kept in `segments.parquet` for your synthetic generators. The FixMyStreet scores use `is_main_road` only.
-4. **Label roads (team decision):** only 27% of Southampton 2015–19 reports (261 of 997) snap to main roads (≤25 m). Main-road-only labels keep that 27%. All roads keep about 98%. `labels_segment_year.csv` says main roads only for now, until this is decided.
+4. ~~**Label roads**~~ **decided 17 Oct: all roads.** Was: only 27% of Southampton 2015–19 reports (261 of 997) snap to main roads (≤25 m). Labels now cover all road classes, and `is_main_road` is a feature.
