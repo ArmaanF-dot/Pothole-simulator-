@@ -126,7 +126,15 @@ def main():
     if old is not None:
         new.insert(0, old[~old.city.isin(args.cities)])
     seg = pd.concat(new, ignore_index=True)
+    if old is not None:   # keep the existing city order (rebuilding a city must not move its rows)
+        order = list(dict.fromkeys(list(old.city) + list(args.cities)))
+        seg = (seg.assign(_c=seg.city.map({c: i for i, c in enumerate(order)}))
+               .sort_values("_c", kind="stable").drop(columns="_c").reset_index(drop=True))
     assert seg.segment_id.is_unique, "duplicate segment_id"
+    ctx = os.path.join(ROOT, cfg["paths"]["processed_dir"], "segment_context.parquet")
+    if os.path.exists(ctx):   # keep cycle_route / near_school_hospital (python -m roadsense.features.context)
+        from roadsense.features.context import attach
+        seg = attach(seg, pd.read_parquet(ctx))
     seg.to_parquet(out, index=False)
     for city, g in seg.groupby("city"):
         main_rd = g[g.is_main_road]

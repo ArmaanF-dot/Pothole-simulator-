@@ -15,7 +15,8 @@ SYN = os.path.join(ROOT, "data", "synthetic")
 OUT = os.path.join(ROOT, "outputs")
 
 SEGMENTS = ["segment_id", "city", "osm_way_id", "name", "ref", "highway", "is_main_road", "ward", "length_m",
-            "lat", "lon", "bus_stop", "bus_routes", "junction", "in_flood_area", "owner", "geometry", "source"]
+            "lat", "lon", "bus_stop", "bus_routes", "junction", "in_flood_area", "owner", "geometry", "source",
+            "cycle_route", "near_school_hospital"]
 LOAD = ["segment_id", "hgv_bus_aadf", "esal_day", "count_point_id", "count_year", "load_source", "source"]
 LABELS = ["city", "segment_id", "year", "n_reports", "had_report", "split"]
 WEATHER = ["ward", "week_start", "rain_3d", "rain_7d", "rain_30d", "rain_90d", "hours_below_0_7d",

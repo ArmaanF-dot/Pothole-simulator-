@@ -8,8 +8,8 @@ Columns: segment_id, city, cycle_route (bool), near_school_hospital (bool), sour
   lane/track (cycleway, cycleway:left/right/both = lane|track|shared_lane|share_busway).
 - near_school_hospital: an OSM amenity=school|college|hospital (node, way or relation centre) within 100 m of the segment.
 Source: OpenStreetMap contributors (ODbL), via Overpass (servers in config.yaml osm.overpass_urls). Raw replies are cached
-in data/raw/osm/{code}_context.json. Kept as a separate file so rebuilding segments.parquet never drops these columns:
-join on segment_id.
+in data/raw/osm/{code}_context.json. Also copied onto segments.parquet (lane C's urgency weights switch on when the columns are there); the
+separate file stays the source, and roadsense.features.segments re-attaches it after every rebuild.
 """
 import argparse, json, os, urllib.parse, urllib.request, time
 
@@ -104,6 +104,31 @@ def build_city(cfg, city, seg_all, refresh=False):
     return out
 
 
+CONTEXT_COLS = ["cycle_route", "near_school_hospital"]
+
+
+def attach(seg, ctx):
+    """segments + context columns (joined on segment_id). Same rows, same order; missing context -> False."""
+    base = seg.drop(columns=[c for c in CONTEXT_COLS if c in seg.columns])
+    out = base.merge(ctx[["segment_id"] + CONTEXT_COLS], on="segment_id", how="left", validate="one_to_one")
+    assert len(out) == len(seg) and out.segment_id.equals(seg.segment_id.reset_index(drop=True)), "segment rows changed"
+    for c in CONTEXT_COLS:
+        out[c] = out[c].fillna(False).astype(bool)
+    return out
+
+
+def attach_to_segments(cfg):
+    """Write cycle_route / near_school_hospital onto segments.parquet (lane C switches its weights on when they exist)."""
+    proc = os.path.join(ROOT, cfg["paths"]["processed_dir"])
+    ctx_path, seg_path = os.path.join(proc, "segment_context.parquet"), os.path.join(proc, "segments.parquet")
+    if not os.path.exists(ctx_path):
+        return
+    seg = pd.read_parquet(seg_path)
+    out = attach(seg, pd.read_parquet(ctx_path))
+    out.to_parquet(seg_path, index=False)
+    print(f"segments.parquet: + {', '.join(CONTEXT_COLS)} ({len(out)} rows, ids unchanged)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cities", nargs="*", default=["Southampton"])
@@ -118,6 +143,7 @@ def main():
         new = pd.concat([old[~old.city.isin(a.cities)], new], ignore_index=True)
     new.to_parquet(path, index=False)
     print(f"-> {path}")
+    attach_to_segments(cfg)
 
 
 if __name__ == "__main__":

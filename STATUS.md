@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 17 Oct 2026, 13:55_
+_Last updated: 17 Oct 2026, 15:20_
 
 ## Done
 - `pull_fixmystreet.py` pulls FixMyStreet road/pavement reports for Southampton, Portsmouth and Brighton (2008–2026).
@@ -23,6 +23,11 @@ _Last updated: 17 Oct 2026, 13:55_
   - **M2 done for Southampton (step 3 below):** `data/processed/fms_snapped.csv` (reports + segment_id + snap_dist_m) and `labels_segment_year.csv` (8,145 segments × 2015–19 + 2026). 976 of 997 in-window reports snap within 25 m. Positives a year: 2015 157 · 2016 216 · 2017 222 (train) · 2018 252 · 2019 129 (test) · 2026 33 (frozen). Run: `python -m roadsense.features.labels`.
   - **M3a done for Southampton (step 4 below): traffic load** `data/processed/load.parquet` from DfT AADF (OGL, 132 count points): hgv_bus_aadf + esal_day per segment, averaged over train years 2015–17. Sources: 314 count, 604 same_road, 7,227 class_median. Run: `python -m roadsense.features.load`. 
   - **M3b done for Southampton: weekly weather** `data/processed/weather_weekly.parquet`, 10,591 ward-weeks (17 wards, Dec 2014 → Nov 2026; the latest weeks use the 16-day forecast and are marked `uses_forecast`). **Source: Open-Meteo, CC BY 4.0, free tier non-commercial** (fine for the hackathon, credit it in the README). Hourly temperature, rain, snow and soil at each ward's centre. Every window uses only hours before `week_start`. Run: `python -m roadsense.ingest.weather Southampton` then `python -m roadsense.features.weather_feats Southampton`. pytest: 8 passed, 5 skipped (lane B files not on this branch yet).
+  - **Flood + context (Southampton):** `in_flood_area` from EA Flood Zone 3 (245 segments). `segment_context.parquet` adds cycle_route / near_school_hospital (schema 2b).
+  - **Brighton and Portsmouth built (same pipeline; Southampton rows checked identical in every file):**
+    - Brighton: 8,179 segments (664 km, 23 wards). Labels: train ≤2022 658 positive segment-years, test 2023–25 676, 2026 28. Load: 366 count / 948 same_road / 6,865 class_median. Flood Zone 3: 30 segments.
+    - Portsmouth: 6,010 segments (486 km, 14 wards, 131 National Highways on M275/M27). Labels 2008–25 (training/transfer only) 246 positive, 2026 39. Load: 325 / 746 / 4,939. Flood Zone 3: 810 segments (13.5%).
+    - **Portsmouth wards come from ONS** (Dec 2024, OGL): MapIt's free quota ran out (429). Same official names, `mapit_id` null. `wards.geojson` now has all 54 wards (`python -m roadsense.features.wards <city>`), and ONS is added to `sources.json`.
 
 ## Next (in order)
 0. **Decided: labels use all roads**, with `is_main_road` as a feature (only 27% of Southampton reports are on A/B roads).

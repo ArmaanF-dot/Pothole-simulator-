@@ -75,11 +75,15 @@ One row per piece of road, all cities stacked. Built from OSM (ODbL) `network_ty
 | owner | str | `council` / `national_highways` (motorway or trunk with a National Highways ref) |
 | geometry | WKB | EPSG:4326 LineString |
 | source | str | `osm` |
+| cycle_route | bool | copied from `segment_context.parquet` (section 2b) on `segment_id` |
+| near_school_hospital | bool | copied from `segment_context.parquet` (section 2b) on `segment_id` |
+
+The two context columns are on `segments.parquet` because lane C's urgency weights switch on when they exist there. `segment_context.parquet` stays the source, and every segments rebuild re-attaches them (row count and `segment_id`s unchanged).
 
 ## 2b. Segment context: `data/processed/segment_context.parquet` (lane A)
 `segment_id, city, cycle_route (bool), near_school_hospital (bool), source` (OSM, ODbL). For the urgency consequence weights.
 `cycle_route`: way in an OSM `route=bicycle` relation or tagged with an on-road cycle lane/track. `near_school_hospital`:
-OSM `amenity=school|college|hospital` within 100 m. Separate file so rebuilding segments never drops it: join on `segment_id`.
+OSM `amenity=school|college|hospital` within 100 m. Kept as its own file and also copied onto `segments.parquet` (section 2).
 Build: `python -m roadsense.features.context Southampton`.
 
 ## 3. Traffic load: `data/processed/load.parquet` (M3)
@@ -147,13 +151,13 @@ Conventions as above: string `segment_id`, EPSG:4326, ISO dates, `week_start` = 
 **Files:** each run writes a dated file (`<name>_<YYYY-MM-DD>`) **and** a copy at `<name>_latest` with the same contents, which the API reads.
 
 ## 7. Risk and wear: `outputs/risk_<YYYY-MM-DD>.parquet` + `outputs/risk_latest.parquet` (lane B writes, lane C reads)
-**4 rows per scored segment, one per forecast week** (`horizon_week` 0–3). Motorways (`owner = national_highways`) are not scored. Residential roads are.
+**4 rows per scored segment, one per forecast week** (`horizon_week` 1–4). Motorways (`owner = national_highways`) are not scored. Residential roads are.
 | Column | Type | Notes |
 |---|---|---|
 | segment_id | str | joins `segments.parquet` |
 | ward | str | from `segments.parquet` (lets the API filter without a join) |
 | week_start | date | forecast week |
-| horizon_week | int | **0–3** (0 = first forecast week), as lane B writes (decided 17 Oct, 14:45) |
+| horizon_week | int | **1–4** (1 = first forecast week), as lane B writes in `risk_latest` (commit 1496843) |
 | p7 | float 0–1 | calibrated probability of a pothole in the next 7 days |
 | p30 | float 0–1 | … next 30 days |
 | p30_trend | float | change in p30 against the previous week's row (as defined by lane B) |
@@ -213,7 +217,7 @@ older than 24 h by `forecast_retrieved_at`. Still open: `POST` payloads (lane C 
 ## 11. Ward boundaries: `data/processed/wards.geojson` (lane A)
 `city, ward, mapit_id, source, geometry` (Polygon/MultiPolygon, EPSG:4326, simplified ~5 m). Ward names match
 `segments.parquet` exactly. Use for the "outside coverage" check (point not in any ward → `out_of_coverage`).
-Source: MapIt (mySociety), boundaries from ONS/OS, OGL. Brighton/Portsmouth wards are appended when those cities are built.
+Source: MapIt (mySociety), boundaries from ONS/OS, OGL, for Southampton and Brighton. **Portsmouth comes from ONS (Wards Dec 2024, OGL)** because MapIt's free quota ran out, so its `mapit_id` is null (same official ward names). Append a city with `python -m roadsense.features.wards <city>`; cities already in the file are left untouched.
 
 ## 12. Data sources for the footer: `data/processed/sources.json` (lane A writes, lane C serves at `GET /sources`)
 `[{name, label, used_for, licence, retrieved_at, data_date, is_synthetic}]`, one entry per real source (OSM, MapIt wards,

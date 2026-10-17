@@ -13,5 +13,7 @@
 - **ESAL factors are assumptions** (bus 1.3, rigid 2-axle 0.4 … 6-axle artic 2.2 standard axles). They are not from a council or DMRB, and are only used to rank load.
 - **Flood = EA Flood Zone 3 only (rivers and sea, Flood Map for Planning, OGL).** It doesn't cover surface-water flooding, which matters for potholes but is a separate EA layer. `in_flood_area` = segment midpoint inside a Zone 3 polygon (Southampton 245 segments, 3%).
 - **Junction = 4+ streets or a mini-roundabout/signal node.** In OSM's simplified graph almost every edge ends at a 3-way meet, so those are not counted (16% of Southampton segments are junctions).
-- **National Highways roads = motorways only** (10 Southampton segments, M27/M271). OSM doesn't say who owns trunk A-roads.
+- **Portsmouth wards are ONS (Dec 2024), not MapIt.** MapIt's free quota ran out (HTTP 429), so `roadsense.ingest.osm` falls back to the ONS Open Geography Portal. Ward names are the official ones (checked: ONS and MapIt give identical names for Southampton). `mapit_id` is null for Portsmouth.
+- **Traffic counts by city:** class_median share is Brighton 84% and Portsmouth 82% of segments (Southampton 89%). Brighton's B-road (secondary) median comes out above its A-road (primary) median because of a few busy counted B-roads. It's left as measured.
+- **National Highways roads = motorways only** (10 Southampton segments, M27/M271; 131 Portsmouth, M275/M27). OSM doesn't say who owns trunk A-roads.
 - **B-roads often lack a `ref` in OSM** (64 km of Southampton main road has no ref). They are still `is_main_road` by highway class.

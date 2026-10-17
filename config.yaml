@@ -54,6 +54,9 @@ osm:
   mapit_url: https://mapit.mysociety.org
   # MapIt area id of each council (for ward boundaries: children of type UTW / MTW)
   council_area: {Southampton: 2567, Portsmouth: 2657, Brighton: 2614}
+  # Fallback when MapIt's free quota runs out (429): ONS Open Geography Portal wards (OGL), same names
+  ons_wards_url: https://services1.arcgis.com/ESMARspQHYMw9BZ9/ArcGIS/rest/services/Wards_December_2024_Boundaries_UK_BGC/FeatureServer/0/query
+  ons_lad: {Southampton: E06000045, Portsmouth: E06000044, Brighton: E06000043}
 
 flood:
   # Environment Agency Flood Map for Planning, rivers and sea (OGL), WFS checked 17 Oct 2026
