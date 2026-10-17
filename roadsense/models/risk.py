@@ -143,7 +143,7 @@ def leave_one_city_out(table: pd.DataFrame, cfg: dict) -> dict | None:
 
 # --- real FixMyStreet check ------------------------------------------------------------------
 def load_fms(root: Path, city: str = "Southampton") -> pd.DataFrame | None:
-    for p in [root / "data" / "processed" / "fixmystreet.parquet", root / "data" / "fms_dedup.csv"]:
+    for p in [root / "data" / "processed" / "fixmystreet.parquet", root / "data" / "fms_roads_clean.csv", root / "data" / "fms_dedup.csv"]:
         if p.exists():
             f = pd.read_parquet(p) if p.suffix == ".parquet" else pd.read_csv(p)
             f = f[f["city"].str.lower() == city.lower()] if "city" in f else f

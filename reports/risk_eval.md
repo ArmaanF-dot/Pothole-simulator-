@@ -1,6 +1,6 @@
 # Risk model evaluation
 
-_Generated 2026-10-17T11:38:14+00:00 by `python -m roadsense.models.risk` (risk-v0.1). as_of 2026-10-12._
+_Generated 2026-10-17T11:43:13+00:00 by `python -m roadsense.models.risk` (risk-v0.1). as_of 2026-10-12._
 
 **Labels are SYNTHETIC** (Generator 2, seed 2026). Scores on synthetic labels are a pipeline check, not proof the model works on real roads. The real-world check below uses real FixMyStreet reports.
 
@@ -67,7 +67,7 @@ Not run: only Southampton is in the table. Port-city features come from lane A; 
 
 ## Real-world check: FixMyStreet Southampton (real data)
 
-Hold-out: real FixMyStreet road-surface reports from 2025-10-12 to 2026-10-12 (`data\fms_dedup.csv`), never used in training. 41 reports, 10 within 15 m of a scored segment. Segments ranked as at 2025-10-06.
+Hold-out: real FixMyStreet road-surface reports from 2025-10-12 to 2026-10-12 (`data\fms_roads_clean.csv`), never used in training. 40 reports, 10 within 15 m of a scored segment. Segments ranked as at 2025-10-06.
 
 | Scorer | Reports in top 10% of segments | Share | Lift vs random (0.10) |
 |---|---|---|---|

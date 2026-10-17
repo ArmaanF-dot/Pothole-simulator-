@@ -1,6 +1,6 @@
 # Streetlight model evaluation
 
-_Generated 2026-10-17T11:41:55+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
+_Generated 2026-10-17T11:44:38+00:00 by `python -m roadsense.models.lights` (lights-v0.1). as_of 2026-10-12._
 
 **The lamp register and fault history are SYNTHETIC** (Generators 3 and 4). The burn-hour clock is real: astral sunset to sunrise for Southampton, minus the council's 01:00 to 05:30 switch-off from 2023-12-01.
 
@@ -23,7 +23,7 @@ Refitted on data before the cutoff. 16,723 lamps, 282 with a fault in the window
 | Baseline: install year only | 0.024 | 0.023 |
 | Random (base rate) | 0.017 | 0.011 |
 
-Almost every unit in service is an LED on the same burn-hour clock, so burn hours rank lamps much like install year does and the model only edges the baseline. Its value here is the calibrated probability and the replacement date, not the ranking. Electrical and damage faults (2% a year, random) cap precision for any scorer.
+Almost every unit in service is an LED on the same burn-hour clock, so burn hours rank lamps much like install year does, and the model ranks no better than the baseline (the gap is within noise: about 20 hits in the top 5%). Its value here is the calibrated probability and the replacement date, not the ranking. Electrical and damage faults (2% a year, random) cap precision for any scorer.
 
 ## Current outputs
 
