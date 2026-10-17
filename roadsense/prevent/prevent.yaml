@@ -11,7 +11,7 @@ paths:
   outputs_dir: outputs
   state_dir: outputs/lane_c                # API state: triage queue, work orders, outcomes, token log
   reports_dir: reports
-  fms_csv: data/fms_roads_clean.csv        # real FixMyStreet road-surface reports (main)
+  fms_csv: data/processed/fms_roads_clean.csv   # real FixMyStreet road-surface reports (lane A, schemas.md section 1)
   fms_all_csv: data/fms_dedup.csv          # includes pavement/footway reports (triage eval sample)
 
 coverage:

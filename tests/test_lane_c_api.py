@@ -64,12 +64,11 @@ def root(tmp_path):
         "lat": [seg["lat"].iloc[4] + 5 / I.M_PER_DEG_LAT, seg["lat"].iloc[4] + 8 / I.M_PER_DEG_LAT, 51.5],
         "lon": [seg["lon"].iloc[4], seg["lon"].iloc[4] + 3 / I.M_PER_DEG_LON, -0.1],
         "title": ["Large pothole in road", "Pothole", "Pothole in London"], "surface_keyword": True})
-    (tmp_path / "data").mkdir()
-    fms.to_csv(tmp_path / "data" / "fms_roads_clean.csv", index=False)
+    (tmp_path / "data" / "processed").mkdir(parents=True)
+    fms.to_csv(tmp_path / "data" / "processed" / "fms_roads_clean.csv", index=False)
     (tmp_path / "outputs").mkdir()
     w["risk"].to_parquet(tmp_path / "outputs" / "risk_2026-10-12.parquet")
     w["lights"].to_parquet(tmp_path / "outputs" / "lights_2026-10-12.parquet")
-    (tmp_path / "data" / "processed").mkdir()
     w["segments"].to_parquet(tmp_path / "data" / "processed" / "segments.parquet")
     (tmp_path / "data" / "synthetic").mkdir()
     pd.DataFrame({"outcome_id": ["CO1", "CO2"], "segment_id": ["X003-001", "X003-002"], "inspection_date": "2026-10-20",
