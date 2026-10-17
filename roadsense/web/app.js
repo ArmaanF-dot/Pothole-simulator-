@@ -17,6 +17,8 @@ const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v)).to
 const wx = (s) => String(s || "").split(",").map((p) => p.split(":").pop()).filter(Boolean)
   .map((v, i) => (i === 0 ? "this week " : `wk ${i} `) + v.replace("climatology_10y", "climatology").replace("observed", "observed")).join(", ");
 const gbp = (x) => "£" + Number(x).toFixed(2);
+// Open-Meteo's terms require attribution wherever its weather data is shown
+const OPEN_METEO = `<a class="credit" href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a>`;
 const badge = (t, cls = "") => `<span class="badge ${cls}">${t}</span>`;
 
 async function loadMeta() {
@@ -28,7 +30,7 @@ async function loadMeta() {
     + (m.freshness.stale ? badge("STALE", "stale") : "") + (m.freshness.provisional ? badge("PROVISIONAL", "prov") : "")
     + (m.gemini ? "" : ` <span class="muted small">Gemini off: keyword triage</span>`);
   const b = $("#stale");
-  b.textContent = m.freshness.message + (m.badges.mock_inputs ? " " + m.badges.note : "");
+  b.innerHTML = esc(m.freshness.message + (m.badges.mock_inputs ? " " + m.badges.note : "")) + " · " + OPEN_METEO;
   b.classList.toggle("hidden", !m.freshness.provisional && !m.badges.mock_inputs);
   $("#official-link").href = m.official_report_url;
 }
@@ -123,7 +125,7 @@ async function showSegment(id, fly) {
       <div>Wear</div><div>${fmt(s.wear_pct, 0)}% ${s.wear_synthetic ? badge("SYNTHETIC") : ""}</div>
       <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)} ${badge("SYNTHETIC LABELS")}</div>
       <div>P30 next 4 wks</div><div>${s.risk_weeks.map((w) => `<span title="week of ${esc(w.week_start)}: ${esc(w.weather_basis || "")}${w.forecast_retrieved_at ? ", forecast retrieved " + esc(w.forecast_retrieved_at) : ""}">${fmt(w.p30)}${w.weather_basis === "climatology_10y" ? "<sup>c</sup>" : w.uses_forecast ? "<sup>f</sup>" : ""}</span>`).join(" → ")}
-        <div class="small muted">f = Open-Meteo forecast, c = 10-year climatology (beyond the 16-day forecast)</div></div>
+        <div class="small muted">f = Open-Meteo forecast, c = 10-year climatology (beyond the 16-day forecast) · ${OPEN_METEO}</div></div>
       <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} labels ${badge("SYNTHETIC")}</div>
       <div>Consequence</div><div>×${fmt(s.consequence, 2)} ${esc(s.consequence_text)}</div>
       <div>Load</div><div>${fmt(s.esal_day, 0)} ESAL/day · ${esc(s.traffic_note)}${s.load.count_year ? " (DfT count year " + s.load.count_year + ")" : ""}</div>
@@ -199,7 +201,7 @@ async function loadLights() {
 async function loadSources() {
   const s = await api("/sources");
   $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span><span title="${esc(x.used_for)}">${esc(x.name)}</span>: ${esc(x.label)}${x.is_synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
-    + `<span>Map © OpenStreetMap contributors</span>`;
+    + `<span>Map © OpenStreetMap contributors</span><span>${OPEN_METEO}</span>`;
 }
 
 // the plan never waits on the map: map layers load whenever the base map is ready
