@@ -221,7 +221,7 @@ def test_worth_treating_fields_order_and_badges(cfg, world):
     seg, risk = world["segments"], world["risk"]
     base = P.score(seg, risk, cfg)
     loser = base[base["scored"] & (base["avoided_per_gbp"] < 1)].sort_values("urgency").iloc[0]["segment_id"]
-    sc = P.score(seg, risk, cfg, confirmed={loser: {"report": "fms-1", "by": "keyword"}})
+    sc = P.score(seg, risk, cfg, confirmed={loser: {"source_id": "1", "by": "keyword"}})
     r = sc.set_index("segment_id").loc[loser]
     assert r["confirmed_pothole"] and r["worth_treating"] and r["confirmed_by"] == "keyword"
     assert r["treatment"] == "permanent_repair" and r["treatment_cost_gbp"] == 56.94
@@ -247,6 +247,37 @@ def test_confirmed_from_fms_snaps_and_classifies(cfg, world):
                         "requested": [pd.Timestamp("2026-10-10")] * 3, "lat": [s["lat"]] * 3, "lon": [s["lon"]] * 3,
                         "title": ["Large pothole", "Blocked drain", "Pothole"]})
     c = P.confirmed_from_fms(fms, seg, cfg, now=pd.Timestamp("2026-10-17"))
-    assert c == {s["segment_id"]: {"report": "fms-1", "by": "keyword"}}
+    assert c == {s["segment_id"]: {"source_id": "1", "by": "keyword"}}
     g = P.confirmed_from_fms(fms, seg, cfg, classify=lambda r: ("pothole", "gemini"), now=pd.Timestamp("2026-10-17"))
     assert g[s["segment_id"]]["by"] == "gemini"
+
+
+def test_confirmed_fields_precedence_and_simulated_crew(cfg, world):
+    seg, risk = world["segments"], world["risk"]
+    ids = risk["segment_id"].tolist()
+    a, b, c = ids[0], ids[1], ids[2]
+    confirmed = {a: {"source_id": "111", "by": "keyword"}, b: {"source_id": "222", "by": "gemini"}}
+    feedback = {b: {"confirmed_open": True, "crew_outcome_id": "CO0007", "crew_is_synthetic": True},
+                c: {"confirmed_open": True, "crew_outcome_id": "OUT00001", "crew_is_synthetic": False}}
+    sc = P.score(seg, risk, cfg, feedback, confirmed=confirmed).set_index("segment_id")
+    assert (sc.loc[a, ["confirmed_by", "confirmed_source_id", "confirmed_is_synthetic"]].tolist() == ["keyword", "111", False])
+    assert sc.loc[b, "confirmed_by"] == "crew" and sc.loc[b, "confirmed_source_id"] == "CO0007"  # crew > gemini
+    assert bool(sc.loc[b, "confirmed_is_synthetic"]) and not bool(sc.loc[c, "confirmed_is_synthetic"])
+    assert set(sc["confirmed_by"]) <= {"", "keyword", "gemini", "crew"}
+    assert (sc.loc[sc["confirmed_by"] != "", "confirmed_source_id"] != "").all()
+    w = P.build_worth(sc.reset_index(), cfg)
+    assert w.set_index("segment_id").loc[b, "value_badge"] == "Simulated crew report"
+    assert w.set_index("segment_id").loc[b, "treatment"] == "permanent_repair"
+    s = P.worth_summary(w)
+    assert s["confirmed_potholes"] == 2 and s["simulated_crew_reports"] == 1
+    assert "2 confirmed potholes · 1 crew-reported (simulated)" in s["header"]
+
+
+def test_plan_csv_has_contract_confirmation_columns(cfg, tmp_path):
+    res = P.run(cfg, root=tmp_path, verbose=False)
+    out = pd.read_csv(res["path"].parent / "prevention_plan_latest.csv", dtype={"confirmed_by": str,
+                      "confirmed_source_id": str}, keep_default_na=False)
+    for col in ["confirmed_by", "confirmed_source_id", "confirmed_is_synthetic"]:
+        assert col in out
+    assert "confirmed_report" not in out
+    assert set(out["confirmed_by"]) <= {"", "keyword", "gemini", "crew"}

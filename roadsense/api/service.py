@@ -106,7 +106,10 @@ class Service:
             if (q.get("category") == "pothole" and q.get("segment_id") and q.get("source", "fixmystreet") == "fixmystreet"
                     and q.get("status") in ("pending_approval", "approved", "inspected")):
                 by = "gemini" if str(q.get("method", "")).startswith("gemini") else "keyword"
-                out[q["segment_id"]] = {"report": q["report_id"], "by": by}
+                sid = str(q["report_id"])
+                sid = sid[len("fms-"):] if sid.startswith("fms-") else sid
+                if out.get(q["segment_id"], {}).get("by") != "gemini" or by == "gemini":  # gemini > keyword
+                    out[q["segment_id"]] = {"source_id": sid.split("-r")[0], "by": by}
         return out
 
     def rescore(self):
@@ -397,15 +400,18 @@ class Service:
         fb = self.feedback.setdefault(segment_id, {})
         fcfg = self.cfg["feedback"]
         fb.pop("urgency_floor", None)  # inspected: the report hold is replaced by what the crew found
+        oid = outcome_id or f"OUT{len(self.outcomes) + 1:05d}"
         if outcome == "pothole":
             fb["confirmed_open"] = True
+            fb["crew_outcome_id"] = oid
+            fb["crew_is_synthetic"] = source.startswith("synthetic")
         elif outcome == "cracking":
             fb["cracking"] = True
             fb["p30_multiplier"] = fb.get("p30_multiplier", 1.0) * fcfg["cracking_p30_multiplier"]
         else:
             fb["confirmed_open"] = False
             fb["p30_multiplier"] = fb.get("p30_multiplier", 1.0) * fcfg["none_p30_multiplier"]
-        rec = {"outcome_id": outcome_id or f"OUT{len(self.outcomes) + 1:05d}", "segment_id": segment_id, "outcome": outcome,
+        rec = {"outcome_id": oid, "segment_id": segment_id, "outcome": outcome,
                "inspection_date": inspection_date or datetime.now(timezone.utc).date().isoformat(), "source": source,
                "is_synthetic": source.startswith("synthetic"),
                "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
