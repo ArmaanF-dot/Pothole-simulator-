@@ -206,3 +206,42 @@ def test_context_columns_missing_mean_false(cfg, tmp_path, world):
     world["segments"].to_parquet(d / "segments.parquet")
     loaded, _ = I.load_segments(cfg, root=tmp_path)
     assert not loaded["cycle_route"].any() and not loaded["near_school_hospital"].any()
+
+
+def test_horizon_uses_treatment_life(cfg):
+    t = pd.Series(["surface_dressing", "resurface"])
+    life = cfg["treatments"]["life_years"]
+    a = T.expected_avoided([0.05, 0.05], t, cfg)
+    h = -np.log1p(-0.05)
+    assert a[0] == pytest.approx(h * 12 * life["surface_dressing"] * (1 - 0.6))
+    assert a[1] == pytest.approx(h * 12 * life["resurface"] * (1 - 0.3))
+
+
+def test_worth_treating_fields_order_and_badges(cfg, world):
+    seg, risk = world["segments"], world["risk"]
+    base = P.score(seg, risk, cfg)
+    loser = base[base["scored"] & (base["avoided_per_gbp"] < 1)].sort_values("urgency").iloc[0]["segment_id"]
+    sc = P.score(seg, risk, cfg, confirmed={loser: {"report": "fms-1", "by": "keyword"}})
+    r = sc.set_index("segment_id").loc[loser]
+    assert r["confirmed_pothole"] and r["worth_treating"] and r["confirmed_by"] == "keyword" and not r["pays_back"]
+    assert (sc["pays_back"] == (sc["scored"] & (sc["avoided_per_gbp"] >= 1))).all()
+    w = P.build_worth(sc, cfg)
+    assert w.iloc[0]["segment_id"] == loser and w.iloc[0]["value_badge"].startswith("Confirmed: must fix")
+    rest = w[~w["confirmed_pothole"]]
+    assert rest["pays_back"].all() and rest["avoided_per_gbp"].is_monotonic_decreasing
+    plan = P.build_plan(sc, cfg)
+    assert set(plan["value_badge"].str.split(" ×").str[0]) <= {"Pays back", "Loss maker", "Confirmed: must fix"}
+    s = P.worth_summary(w)
+    assert s["confirmed_potholes"] == 1 and s["header"].startswith(f"{s['pays_back']} roads pay back · 1 confirmed potholes")
+
+
+def test_confirmed_from_fms_snaps_and_classifies(cfg, world):
+    seg = world["segments"]
+    s = seg.iloc[34]
+    fms = pd.DataFrame({"id": [1, 2, 3], "status": ["open", "open", "closed"],
+                        "requested": [pd.Timestamp("2026-10-10")] * 3, "lat": [s["lat"]] * 3, "lon": [s["lon"]] * 3,
+                        "title": ["Large pothole", "Blocked drain", "Pothole"]})
+    c = P.confirmed_from_fms(fms, seg, cfg, now=pd.Timestamp("2026-10-17"))
+    assert c == {s["segment_id"]: {"report": "fms-1", "by": "keyword"}}
+    g = P.confirmed_from_fms(fms, seg, cfg, classify=lambda r: ("pothole", "gemini"), now=pd.Timestamp("2026-10-17"))
+    assert g[s["segment_id"]]["by"] == "gemini"

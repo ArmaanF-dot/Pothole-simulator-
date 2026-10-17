@@ -95,8 +95,22 @@ class Service:
         self.rescore()
 
     # --- scoring -------------------------------------------------------------------------------
+    def confirmed(self) -> dict:
+        """Confirmed potholes: open FixMyStreet reports on a segment that triage calls a road defect.
+        Reports triaged in the app keep their method (gemini or keyword); the rest of the open reports
+        use the keyword rules, so no Gemini quota is spent at start-up."""
+        if not hasattr(self, "_fms_confirmed"):
+            self._fms_confirmed = P.confirmed_from_fms(self.fms, self.seg, self.cfg, now=self.now)
+        out = dict(self._fms_confirmed)
+        for q in self.queue:
+            if (q.get("category") == "pothole" and q.get("segment_id") and q.get("source", "fixmystreet") == "fixmystreet"
+                    and q.get("status") in ("pending_approval", "approved", "inspected")):
+                by = "gemini" if str(q.get("method", "")).startswith("gemini") else "keyword"
+                out[q["segment_id"]] = {"report": q["report_id"], "by": by}
+        return out
+
     def rescore(self):
-        self.scored = P.score(self.seg, self.risk, self.cfg, self.feedback)
+        self.scored = P.score(self.seg, self.risk, self.cfg, self.feedback, confirmed=self.confirmed())
         self.ctx = TR.Context(self.cfg, self.scored, self.lights, self.queue, wards=self.wards)
         self._scenario_scored: dict[str, pd.DataFrame] = {}
 
@@ -106,7 +120,8 @@ class Service:
         if scenario not in self._scenarios:
             self._scenarios[scenario] = W.apply_scenario(self.risk, self.seg, scenario, self.cfg, root=self.root)
         if scenario not in self._scenario_scored:
-            self._scenario_scored[scenario] = P.score(self.seg, self._scenarios[scenario], self.cfg, self.feedback)
+            self._scenario_scored[scenario] = P.score(self.seg, self._scenarios[scenario], self.cfg, self.feedback,
+                                                      confirmed=self.confirmed())
         return self._scenario_scored[scenario]
 
     def warm(self) -> dict:
@@ -211,7 +226,9 @@ class Service:
     def plan(self, ward=None, scenario=None, forecast_as_of=None) -> dict:
         s = self.scored_for(scenario)
         f = self.freshness(forecast_as_of)
-        p = P.build_plan(s, self.cfg, ward=ward, data_dates=P.data_dates(self.seg_meta, self.risk_meta, f))
+        dd = P.data_dates(self.seg_meta, self.risk_meta, f)
+        p = P.build_plan(s, self.cfg, ward=ward, data_dates=dd)
+        w = P.build_worth(s, self.cfg, ward=ward, data_dates=dd)
         method = (self._scenarios[scenario]["scenario_method"].iloc[0] if scenario else None)
         movers = []
         if scenario:
@@ -223,7 +240,10 @@ class Service:
         return {"movers": movers, "as_of": self.risk_meta.get("as_of"), "trained_on": self.risk_meta.get("trained_on"),
                 "model_version": self.risk_meta.get("model_version"), "ward": ward, "scenario": scenario, "scenario_method": method,
                 "freshness": f, "provisional": f["provisional"], "count": len(p), "costs": self.cfg["costs"],
-                **self.badges(), "rows": records(p, P.PLAN_COLS)}
+                "horizon": "reactive repairs avoided over each treatment's service life (years): "
+                           + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in self.cfg["treatments"]["life_years"].items()),
+                **self.badges(), "rows": records(p, P.PLAN_COLS),
+                "worth": {**P.worth_summary(w), "rows": records(w, P.PLAN_COLS)}}
 
     def lights_view(self, ward=None, due=None, dark=None, limit=500, due_days: int | None = None) -> dict:
         L = self.lights.merge(self.seg[["segment_id", "ward", "name"]], on="segment_id", how="left")
@@ -337,6 +357,8 @@ class Service:
             rep["report_id"] = f"{rep['report_id']}-r{len(self.queue) + 1}"
         wo = TR.triage(rep, self.ctx, client=self.client, method=method, image=image, root=self.root)
         self.save()
+        if wo.get("category") == "pothole" and wo.get("segment_id"):
+            self.rescore()
         return wo
 
     def _find(self, report_id: str) -> dict:

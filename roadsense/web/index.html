@@ -30,9 +30,14 @@
       <button data-tab="lights">Streetlights</button>
     </nav>
     <div id="tab-plan" class="tab">
+      <nav class="subtabs">
+        <button data-view="all" class="active">All roads</button>
+        <button data-view="worth">Worth treating <span id="worth-count" class="pill ok"></span></button>
+      </nav>
+      <p id="worth-head" class="worth-head hidden"></p>
       <p id="plan-head" class="muted"></p>
       <div id="movers"></div>
-      <table class="rows"><thead><tr><th>#</th><th>Segment</th><th>Urgency</th><th>Treatment</th><th>£ avoided per £</th></tr></thead>
+      <table class="rows"><thead><tr><th>#</th><th>Segment</th><th>Urgency</th><th>Treatment</th><th>Value</th></tr></thead>
         <tbody id="plan-rows"></tbody></table>
     </div>
     <div id="tab-triage" class="tab hidden">

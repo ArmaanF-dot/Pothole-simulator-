@@ -44,7 +44,41 @@ TRAFFIC_NOTE = {"high": "DfT count on this segment", "medium": "DfT count on the
                 "low": "modelled estimate, low confidence"}
 
 
-def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | None = None) -> pd.DataFrame:
+def keyword_classifier(row) -> tuple[str, str]:
+    from roadsense.agent.triage import keyword_classify
+    return keyword_classify(str(row.title)), "keyword"
+
+
+def confirmed_from_fms(fms: pd.DataFrame, seg: pd.DataFrame, cfg: dict, classify=None, now=None) -> dict:
+    """Confirmed potholes: open FixMyStreet reports snapped to a council segment that triage classifies
+    as a road defect. Open = status open and reported within triage.open_report_days; snap within
+    triage.snap_radius_m. classify(row) -> (category, "gemini" | "keyword"); keyword rules by default.
+    Returns {segment_id: {"report": "fms-<id>", "by": "gemini" | "keyword"}}.
+    """
+    if fms is None or not len(fms):
+        return {}
+    classify = classify or keyword_classifier
+    t = cfg["triage"]
+    cutoff = pd.Timestamp(now or pd.Timestamp.now(tz="UTC")).tz_localize(None) - pd.Timedelta(days=t["open_report_days"])
+    o = fms[(fms["status"] == "open") & (pd.to_datetime(fms["requested"]) >= cutoff)]
+    if o.empty:
+        return {}
+    s = seg.reset_index(drop=True)
+    council = ((s["owner"] != "national_highways") & (s["highway"] != "motorway")).values
+    idx = I.SegmentIndex(s)
+    out = {}
+    for r in o.itertuples():
+        j, d = idx.nearest(float(r.lon), float(r.lat), mask=council)
+        if j is None or d > t["snap_radius_m"]:
+            continue
+        category, by = classify(r)
+        if category == "pothole":
+            out.setdefault(s.iloc[j]["segment_id"], {"report": f"fms-{int(r.id)}", "by": by})
+    return out
+
+
+def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | None = None,
+          confirmed: dict | None = None) -> pd.DataFrame:
     """One row per segment (council and National Highways) with urgency, band and treatment.
 
     feedback: {segment_id: {"confirmed_open": bool, "cracking": bool, "p30_multiplier": float}}
@@ -97,6 +131,16 @@ def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | Non
     df["traffic_note"] = df["load_confidence"].map(TRAFFIC_NOTE).fillna(TRAFFIC_NOTE["low"])
     df["status"] = np.where(nh, "National Highways road, not scored",
                             np.where(df["p30"].isna(), "no risk score", "scored"))
+    # Worth treating (schemas.md section 9): pays back over the treatment's life, or a confirmed pothole
+    confirmed = confirmed or {}
+    df["confirmed_report"] = df["segment_id"].map(lambda s: confirmed.get(s, {}).get("report"))
+    df["confirmed_by"] = df["segment_id"].map(lambda s: confirmed.get(s, {}).get("by"))
+    df.loc[df["confirmed_by"].isna() & df["confirmed_open"], "confirmed_by"] = "crew"
+    df["confirmed_pothole"] = df["scored"] & df["confirmed_by"].notna()
+    df["open_fms_report"] = df["open_fms_report"] | df["confirmed_report"].notna()
+    df["pays_back"] = df["scored"] & (df["avoided_per_gbp"] >= cfg["plan"].get("pays_back_min", 1.0))
+    candidate = df["scored"] & (df["band"] == "prevention") & (df["p30_rise"] > cfg["plan"]["min_rise"])
+    df["worth_treating"] = (candidate & df["pays_back"]) | df["confirmed_pothole"]
     return df
 
 
@@ -105,6 +149,39 @@ def build_plan(scored: pd.DataFrame, cfg: dict, ward: str | None = None, data_da
     if ward:
         p = p[p["ward"] == ward]
     p = p.sort_values(["avoided_per_gbp", "urgency"], ascending=False).head(cfg["plan"]["top_n"]).copy()
+    return _decorate(p, cfg, data_dates)
+
+
+def build_worth(scored: pd.DataFrame, cfg: dict, ward: str | None = None, data_dates: dict | None = None) -> pd.DataFrame:
+    """Worth treating: confirmed potholes first (by urgency), then roads that pay back (by avoided_per_gbp)."""
+    w = scored[scored["worth_treating"]]
+    if ward:
+        w = w[w["ward"] == ward]
+    conf = w[w["confirmed_pothole"]].sort_values(["urgency", "avoided_per_gbp"], ascending=False)
+    pays = w[~w["confirmed_pothole"]].sort_values(["avoided_per_gbp", "urgency"], ascending=False)
+    return _decorate(pd.concat([conf, pays]).copy(), cfg, data_dates)
+
+
+def worth_summary(worth: pd.DataFrame) -> dict:
+    n_pay = int(worth["pays_back"].sum()) if len(worth) else 0
+    n_conf = int(worth["confirmed_pothole"].sum()) if len(worth) else 0
+    cost = float(worth["cost_planned_gbp"].sum()) if len(worth) else 0.0
+    avoided = float(worth["cost_reactive_avoided_gbp"].sum()) if len(worth) else 0.0
+    return {"pays_back": n_pay, "confirmed_potholes": n_conf, "treatment_gbp": round(cost, 2),
+            "reactive_avoided_gbp": round(avoided, 2),
+            "header": f"{n_pay} roads pay back · {n_conf} confirmed potholes · £{cost:,.0f} treatment · "
+                      f"£{avoided:,.0f} reactive cost avoided"}
+
+
+def badge(r: dict) -> str:
+    x = r["avoided_per_gbp"]
+    ratio = f"×{x:.2f}" if x >= 0.1 or x == 0 else f"×{x:.2g}"
+    if r.get("confirmed_pothole") and not r.get("pays_back"):
+        return f"Confirmed: must fix {ratio}"
+    return f"Pays back {ratio}" if r.get("pays_back") else f"Loss maker {ratio}"
+
+
+def _decorate(p: pd.DataFrame, cfg: dict, data_dates: dict | None) -> pd.DataFrame:
     p.insert(0, "rank", np.arange(1, len(p) + 1))
     c = cfg["costs"]
     p["reasons"] = [" · ".join(x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str))
@@ -112,24 +189,25 @@ def build_plan(scored: pd.DataFrame, cfg: dict, ward: str | None = None, data_da
     p["cost_logic"] = [
         (f"P30 {r['p30_w0']:.3f} now, peak {r['p30_peak']:.3f} in 4 weeks; "
          f"{r['treatment_label'].lower()} cuts hazard to x{cfg['treatments']['hazard_multiplier'].get(r['treatment'], 1)} "
-         f"for {cfg['treatments']['benefit_years']} years = {r['expected_repairs_avoided']:.2f} reactive repairs avoided "
+         f"over its {cfg['treatments']['life_years'].get(r['treatment'], 0)}-year life = {r['expected_repairs_avoided']:.2f} reactive repairs avoided "
          f"x £{c['reactive_repair']:.2f} = £{r['reactive_cost_avoided_gbp']:.2f} for £{r['treatment_cost_gbp']:.2f} "
          f"(treatment £/m² is an assumption; planned repair £{c['planned_repair']:.2f} vs reactive £{c['reactive_repair']:.2f}, {c['source']})")
         for r in p.to_dict("records")]
     p["cost_planned_gbp"] = p["treatment_cost_gbp"]
     p["cost_reactive_avoided_gbp"] = p["reactive_cost_avoided_gbp"]
     p["data_dates"] = json.dumps(data_dates or {})
+    p["value_badge"] = [badge(r) for r in p.to_dict("records")]
     return p
 
 
 # contract section 9 first (docs/contract_outputs.md), then lane C extras the page shows
 CONTRACT_COLS = ["rank", "segment_id", "ward", "name", "ref", "band", "urgency", "p30", "wear", "treatment",
                  "reason_1", "reason_2", "reason_3", "cost_planned_gbp", "cost_reactive_avoided_gbp", "open_fms_report",
-                 "uses_synthetic", "data_dates"]
+                 "uses_synthetic", "data_dates", "pays_back", "confirmed_pothole", "confirmed_by", "worth_treating"]
 PLAN_COLS = CONTRACT_COLS + ["highway", "p30_peak", "p30_rise", "consequence", "consequence_text", "treatment_label",
                              "avoided_per_gbp", "reasons", "cost_logic", "esal_day", "load_confidence", "traffic_note",
                              "weather_source", "model_version", "as_of", "labels_synthetic", "wear_synthetic",
-                             "inputs_mock", "p30_w0"]
+                             "inputs_mock", "p30_w0", "value_badge", "confirmed_report"]
 
 
 def data_dates(seg_meta: dict, risk_meta: dict, fresh: dict) -> dict:
@@ -145,13 +223,15 @@ def run(cfg: dict | None = None, root: Path | None = None, forecast_as_of: str |
     if scenario:
         from roadsense.prevent.whatif import apply_scenario
         risk = apply_scenario(risk, seg, scenario, cfg, root=root)
-    sc = score(seg, risk, cfg, feedback)
+    sc = score(seg, risk, cfg, feedback, confirmed=confirmed_from_fms(I.load_fms(cfg, root), seg, cfg))
     fm = I.load_forecast_meta(cfg, root)
     if risk_meta.get("forecast_retrieved_at"):
         fm = {**fm, "available": True, "retrieved_at": risk_meta["forecast_retrieved_at"]}
     fresh = freshness(cfg, fm, forecast_as_of)
     plan = build_plan(sc, cfg, data_dates=data_dates(seg_meta, risk_meta, fresh))
     plan["provisional"] = fresh["provisional"]
+    worth = build_worth(sc, cfg, data_dates=data_dates(seg_meta, risk_meta, fresh))
+    worth["provisional"] = fresh["provisional"]
     out = None
     if write:
         od = I.resolve(cfg, "outputs_dir", root)
@@ -161,14 +241,17 @@ def run(cfg: dict | None = None, root: Path | None = None, forecast_as_of: str |
         plan[[c for c in PLAN_COLS + ["provisional"] if c in plan]].to_csv(out, index=False, encoding="utf-8-sig")
         if not scenario:  # schemas.md section 9: a fixed-name copy for the API (no symlinks)
             shutil.copyfile(out, od / "prevention_plan_latest.csv")
+            worth[[c for c in PLAN_COLS + ["provisional"] if c in worth]].to_csv(
+                od / f"prevention_plan_worth_treating_{risk_meta['as_of']}.csv", index=False, encoding="utf-8-sig")
     if verbose:
         n = sc["scored"].sum()
         print(f"scored {n:,} segments ({seg_meta['kind']} segments, {risk_meta['kind']} risk as of {risk_meta['as_of']})")
         print("bands: " + ", ".join(f"{b} {int((sc['band'] == b).sum()):,}" for b in U.BAND_ORDER))
         print(f"prevention plan: {len(plan)} segments{'' if not scenario else f' under {scenario}'}; {fresh['message']}")
+        print(f"worth treating: {worth_summary(worth)['header']}")
         if out:
             print(f"wrote {out}")
-    return {"scored": sc, "plan": plan, "freshness": fresh, "path": out, "meta": [seg_meta, risk_meta]}
+    return {"scored": sc, "plan": plan, "worth": worth, "freshness": fresh, "path": out, "meta": [seg_meta, risk_meta]}
 
 
 def main():

@@ -11,7 +11,7 @@ paths:
   outputs_dir: outputs
   state_dir: outputs/lane_c                # API state: triage queue, work orders, outcomes, token log
   reports_dir: reports
-  fms_csv: data/fms_roads_clean.csv        # real FixMyStreet road-surface reports (main)
+  fms_csv: data/processed/fms_roads_clean.csv   # real FixMyStreet road-surface reports (lane A, schemas.md section 1)
   fms_all_csv: data/fms_dedup.csv          # includes pavement/footway reports (triage eval sample)
 
 coverage:
@@ -50,7 +50,12 @@ treatments:                                # ASSUMPTION thresholds on wear (0-10
   lane_width_m: {A: 7.3, BC: 6.5, residential: 5.5}
   patch_area_m2: 2.0                       # ASSUMPTION per planned repair visit
   hazard_multiplier: {crack_sealing: 0.6, surface_dressing: 0.6, patch: 0.8, resurface: 0.3}
-  benefit_years: 2                         # spec: preventive treatment cuts hazard for 2 years
+  # Horizon for avoided_per_gbp: reactive repairs avoided over the treatment's service life.
+  # ASSUMPTIONS from typical UK service lives (not council figures): crack sealing 2-4 years, surface dressing
+  # 7-10 (RSTA), a permanent patch about 5, resurfacing 15-20. We take the low-to-middle of each range.
+  # Hazard is held at today's level over the life (no extra ageing, no discounting): conservative for old roads.
+  # Note: lane B's synthetic generator assumes the preventive effect lasts 2 years.
+  life_years: {crack_sealing: 3, surface_dressing: 8, patch: 5, resurface: 15, permanent_repair: 5}
   label:
     crack_sealing: "Crack sealing"
     surface_dressing: "Surface dressing"
@@ -68,6 +73,7 @@ plan:
   top_n: 50                                # rows in the weekly plan
   min_rise: 0.0                            # p30 must be forecast to rise by more than this
   max_forecast_age_h: 24                   # older forecast -> STALE, plan provisional
+  pays_back_min: 1.0                       # avoided_per_gbp at or above this = "Pays back"
 
 whatif:
   # Sensitivity surrogate used when lane B's risk model is not importable. Coefficients are the
