@@ -46,7 +46,7 @@ Model: LightGBM, monotone +1 on load, rain, freeze-thaw and rain-then-frost, -1 
 
 ## Leave-one-city-out
 
-Not run: only Southampton is in the table. Port-city features come from lane A; logged in DATA_GAPS.md.
+Not applicable to this synthetic-label model: synthetic council data exists for Southampton only. Leave-one-city-out on real labels (Southampton, Brighton, Portsmouth) is in the real-label section below.
 
 ## Calibration (time split, y30)
 
@@ -83,7 +83,7 @@ Fitted on 1,464 segments resurfaced inside the log window (531 with a first poth
 ## Not done (see DATA_GAPS.md)
 
 - Synthetic plus real labels in one model: not done; the real-label model is separate (section below).
-- Leave-one-city-out: waits on lane A's port-city data.
+- Leave-one-city-out for this synthetic-label model: not applicable (Southampton-only synthetic data); see the real-label section.
 
 <!-- real-label-eval:start -->
 ## Real-label evaluation with uncertainty (FixMyStreet, real data)
@@ -127,6 +127,54 @@ n = 381 test reports on 8,145 test segments (2018, 2019). Model ahead of the las
 Southampton, test years: model 42% (34%-48%) vs last-year baseline 34% (24%-39%); model ahead in 100% of resamples. The difference 8% (95% 3% to 15%) excludes 0, so the model beats the baseline. Physical-only model (no past reports): 10% (7%-14%); vs last-year baseline -23% (95% -29% to -13%), so it falls short of the baseline. Full model vs physical-only: 31% (95% 23% to 38%), past reports add real signal.
 
 Feature reliance (full model, share of mean |SHAP| on 16,290 test rows): past-report features **10%**; by group: weather 29%, road class and length 25%, city 22%, past reports 10%, bus, junction, flood 8%, traffic load 5%. Top features: length_m 23%, city_code 22%, wx_rain_30d_mean 17%. Mean |SHAP| averages over every segment, most of which have no report history, so it understates how much the top of the ranking leans on past reports; the paired model-minus-physical-only difference above is the direct measure. Weather is a ward-year summary with few distinct years in training, so its share partly reflects year-to-year differences in reporting.
+
+### Brighton, leave-one-city-out (trained on the other cities, all usable years)
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 18.4% | 15.9% to 21.1% |
+| physical only | 12.3% | 10.0% to 14.6% |
+| last year reports | 16.5% | 12.9% to 21.2% |
+| load x past reports | 16.6% | 13.4% to 20.0% |
+| model minus last-year (paired) | 1.9% | -3.0% to 6.0% |
+| physical-only minus last-year (paired) | -4.2% | -9.4% to -0.0% |
+| model minus physical-only (paired) | 6.1% | 3.7% to 9.0% |
+
+n = 1,512 test reports on 8,179 test segments (2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025). Model ahead of the last-year baseline in 76% of 1,000 resamples (seed 2026).
+
+Brighton, leave-one-city-out (trained on the other cities, all usable years): model 18% (16%-21%) vs last-year baseline 16% (13%-21%); model ahead in 76% of resamples. The difference 2% (95% -3% to 6%) includes 0, so the model matches the baseline rather than beats it. Physical-only model (no past reports): 12% (10%-15%); vs last-year baseline -4% (95% -9% to -0%), so it falls short of the baseline. Full model vs physical-only: 6% (95% 4% to 9%), past reports add real signal.
+
+### Portsmouth, leave-one-city-out (trained on the other cities, all usable years)
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 19.2% | 12.8% to 25.9% |
+| physical only | 15.2% | 9.2% to 21.6% |
+| last year reports | 13.1% | 9.8% to 21.1% |
+| load x past reports | 9.7% | 4.6% to 14.4% |
+| model minus last-year (paired) | 6.2% | -3.8% to 12.7% |
+| physical-only minus last-year (paired) | 2.1% | -8.1% to 8.7% |
+| model minus physical-only (paired) | 4.0% | -0.1% to 8.3% |
+
+n = 257 test reports on 6,010 test segments (2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025). Model ahead of the last-year baseline in 84% of 1,000 resamples (seed 2026).
+
+Portsmouth, leave-one-city-out (trained on the other cities, all usable years): model 19% (13%-26%) vs last-year baseline 13% (10%-21%); model ahead in 84% of resamples. The difference 6% (95% -4% to 13%) includes 0, so the model matches the baseline rather than beats it. Physical-only model (no past reports): 15% (9%-22%); vs last-year baseline 2% (95% -8% to 9%), so it matches the baseline rather than beats it. Full model vs physical-only: 4% (95% -0% to 8%), past reports add no clear signal.
+
+### Southampton, leave-one-city-out (trained on the other cities, all usable years)
+
+| Method | Capture, top 10% of road length | 95% interval |
+|---|---|---|
+| model | 36.6% | 32.0% to 41.3% |
+| physical only | 13.7% | 10.9% to 16.7% |
+| last year reports | 33.5% | 27.2% to 36.7% |
+| load x past reports | 18.3% | 15.0% to 21.9% |
+| model minus last-year (paired) | 3.1% | 0.9% to 8.1% |
+| physical-only minus last-year (paired) | -19.8% | -24.1% to -12.1% |
+| model minus physical-only (paired) | 22.9% | 17.6% to 27.9% |
+
+n = 819 test reports on 8,145 test segments (2016, 2017, 2018, 2019). Model ahead of the last-year baseline in 99% of 1,000 resamples (seed 2026).
+
+Southampton, leave-one-city-out (trained on the other cities, all usable years): model 37% (32%-41%) vs last-year baseline 33% (27%-37%); model ahead in 99% of resamples. The difference 3% (95% 1% to 8%) excludes 0, so the model beats the baseline. Physical-only model (no past reports): 14% (11%-17%); vs last-year baseline -20% (95% -24% to -12%), so it falls short of the baseline. Full model vs physical-only: 23% (95% 18% to 28%), past reports add real signal.
 
 ### Brighton, frozen 2026 check (Jan to Oct)
 
