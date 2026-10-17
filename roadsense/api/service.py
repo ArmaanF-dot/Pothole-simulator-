@@ -178,8 +178,14 @@ class Service:
         props = records(r, self.DETAIL_FIELDS)[0]
         props["reasons"] = [x for x in [props.get("reason_1"), props.get("reason_2"), props.get("reason_3")] if x]
         row = r.iloc[0]
-        weeks = [{"week": k, "week_start": str((pd.Timestamp(row["week_start"]) + pd.Timedelta(weeks=k)).date())
-                  if pd.notna(row.get("week_start")) else None, "p30": _clean(row.get(f"p30_w{k}"))} for k in range(4)]
+        weeks = [{"horizon_week": k + 1,
+                  "week_start": _clean(row.get(f"week_start_w{k}")) or (str((pd.Timestamp(row["week_start"]) + pd.Timedelta(weeks=k)).date())
+                                                                       if pd.notna(row.get("week_start")) else None),
+                  "p30": _clean(row.get(f"p30_w{k}")),
+                  "weather_basis": _clean(row.get(f"weather_basis_w{k}")),
+                  "uses_forecast": _clean(row.get(f"uses_forecast_w{k}")),
+                  "forecast_retrieved_at": _clean(row.get(f"forecast_retrieved_at_w{k}"))}  # blank for week 4 (climatology)
+                 for k in range(4)]
         load = {k: _clean(row.get(k)) for k in ["esal_day", "hgv_bus_aadf", "load_source", "load_confidence", "count_year"]}
         load["note"] = props.get("traffic_note")
         out = {"type": "Feature", "geometry": self._geometry(sid), "properties": props, **props,
@@ -212,7 +218,8 @@ class Service:
                 cmp_ = cmp_[cmp_["ward"] == ward]
             movers = records(cmp_.head(10).reset_index(), ["segment_id", "name", "ward", "highway", "esal_day", "bus_stop",
                                                           "urgency_base", "urgency_scn", "band_scn", "p30_peak_change"])
-        return {"movers": movers, "as_of": self.risk_meta.get("as_of"), "ward": ward, "scenario": scenario, "scenario_method": method,
+        return {"movers": movers, "as_of": self.risk_meta.get("as_of"), "trained_on": self.risk_meta.get("trained_on"),
+                "model_version": self.risk_meta.get("model_version"), "ward": ward, "scenario": scenario, "scenario_method": method,
                 "freshness": f, "provisional": f["provisional"], "count": len(p), "costs": self.cfg["costs"],
                 **self.badges(), "rows": records(p, P.PLAN_COLS)}
 

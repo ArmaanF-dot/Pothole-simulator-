@@ -182,3 +182,5 @@ def test_horizon_weeks_one_to_four_and_forecast_time(world):
     r = I.normalise_risk(long)
     assert {"p30_w0", "p30_w3"} <= set(r.columns) and "p30_w4" not in r
     assert r.attrs["forecast_retrieved_at"] == "2026-10-17T12:36+00:00"
+    assert r["forecast_retrieved_at_w0"].notna().all() and ("forecast_retrieved_at_w3" not in r or r["forecast_retrieved_at_w3"].isna().all())
+    assert set(r["weather_basis_w3"]) == {"climatology_10y"}

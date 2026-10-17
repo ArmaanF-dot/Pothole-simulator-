@@ -141,9 +141,18 @@ def normalise_risk(r: pd.DataFrame) -> pd.DataFrame:
         fc = r.groupby("segment_id")["uses_forecast"].any() if "uses_forecast" in r else None
         fra = r["forecast_retrieved_at"].dropna().astype(str) if "forecast_retrieved_at" in r else pd.Series(dtype=str)
         r.attrs["forecast_retrieved_at"] = fra.max() if len(fra) else None
+        # per-week weather provenance (schemas.md section 7); week 4 has no forecast_retrieved_at
+        if "weather_basis" not in r:
+            r["weather_basis"] = r["weather_source"] if "weather_source" in r else None
+        meta = {c: r.pivot_table(index="segment_id", columns="horizon_week", values=c, aggfunc="first")
+                for c in ["week_start", "weather_basis", "uses_forecast", "forecast_retrieved_at"]
+                if c in r and r[c].notna().any()}
         r = r[r["horizon_week"] == r["horizon_week"].min()].copy()
         for k in piv.columns:
             r[f"p30_w{k}"] = r["segment_id"].map(piv[k])
+            for c, pv in meta.items():
+                if k in pv.columns:
+                    r[f"{c}_w{k}"] = r["segment_id"].map(pv[k])
         if fc is not None:
             r["uses_forecast"] = r["segment_id"].map(fc)
     if "wear_pct" not in r and "wear" in r:

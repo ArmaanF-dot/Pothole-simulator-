@@ -37,6 +37,7 @@ async function loadPlan() {
   $("#plan-head").innerHTML = `${p.count} segments to treat this week${state.ward ? " in " + esc(state.ward) : ""}, as of ${esc(p.as_of)}.`
     + (p.provisional ? " " + badge("PROVISIONAL", "prov") : "")
     + (p.scenario ? ` What-if <b>${esc(p.scenario)}</b> (${esc(p.scenario_method)}).` : "")
+    + (p.trained_on ? ` Model ${esc(p.model_version || "")} trained on <b>${esc(p.trained_on)}</b> labels.` : "")
     + ` Ranked by reactive repair cost avoided per £ of treatment (planned ${gbp(p.costs.planned_repair)} vs reactive ${gbp(p.costs.reactive_repair)}, ${esc(p.costs.source)}).`;
   $("#movers").innerHTML = p.movers.length ? `<div class="card"><b>Biggest risk rises under ${esc(p.scenario)}</b> <span class="small muted">urgency at the 4-week forecast peak, before → after</span>
     <table class="rows"><tbody>${p.movers.map((m) => `<tr data-id="${esc(m.segment_id)}"><td>${esc(m.name)} <span class="small muted">${esc(m.highway)}${m.bus_stop ? " · bus stop" : ""} · ${fmt(m.esal_day, 0)} ESAL/day</span></td>
@@ -103,7 +104,9 @@ async function showSegment(id, fly) {
     <div class="kv">
       <div>Wear</div><div>${fmt(s.wear_pct, 0)}% ${s.wear_synthetic ? badge("SYNTHETIC") : ""}</div>
       <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)} ${badge("SYNTHETIC LABELS")}</div>
-      <div>P30 next 4 wks</div><div>${[s.p30_w0, s.p30_w1, s.p30_w2, s.p30_w3].map((x) => fmt(x)).join(" → ")}</div>
+      <div>P30 next 4 wks</div><div>${s.risk_weeks.map((w) => `<span title="week of ${esc(w.week_start)}: ${esc(w.weather_basis || "")}${w.forecast_retrieved_at ? ", forecast retrieved " + esc(w.forecast_retrieved_at) : ""}">${fmt(w.p30)}${w.weather_basis === "climatology_10y" ? "<sup>c</sup>" : w.uses_forecast ? "<sup>f</sup>" : ""}</span>`).join(" → ")}
+        <div class="small muted">f = Open-Meteo forecast, c = 10-year climatology (beyond the 16-day forecast)</div></div>
+      <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} labels ${badge("SYNTHETIC")}</div>
       <div>Consequence</div><div>×${fmt(s.consequence, 2)} ${esc(s.consequence_text)}</div>
       <div>Load</div><div>${fmt(s.esal_day, 0)} ESAL/day · ${esc(s.traffic_note)}${s.load.count_year ? " (DfT count year " + s.load.count_year + ")" : ""}</div>
       <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}</div>
@@ -171,7 +174,7 @@ async function loadLights() {
     + `Report a faulty light on the <a href="${esc(l.official_report_url)}" target="_blank" rel="noopener">council's streetlight page</a>.`;
   $("#light-rows").innerHTML = l.lamps.map((x) => `<tr data-lat="${x.lat}" data-lon="${x.lon}"><td>${esc(x.lamp_id)}<div class="small muted">${esc(x.lamp_type)}</div></td>
     <td>${esc(x.name)}<div class="small muted">${esc(x.ward)}</div></td><td>${fmt(x.p_fail_90d)}</td>
-    <td>${esc(x.replace_by)}</td><td>${x.currently_dark ? "<b>dark</b> (" + esc(x.dark_source || "") + ")" : x.replacement_overdue ? "overdue" : ""}</td></tr>`).join("");
+    <td>${esc(x.replace_by)}</td><td>${x.currently_dark ? "<b>dark</b> since " + esc(x.dark_since || "?") + " (" + esc(x.dark_source || "") + ")" : x.replacement_overdue ? "overdue" : ""}</td></tr>`).join("");
   document.querySelectorAll("#light-rows tr").forEach((tr) => tr.onclick = () => state.map.flyTo({ center: [+tr.dataset.lon, +tr.dataset.lat], zoom: 17 }));
 }
 
