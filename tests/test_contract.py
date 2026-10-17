@@ -105,16 +105,52 @@ def test_synthetic_files_use_real_segments(seg, fname):
     assert not stale, f"{fname}: {len(stale)} segment_ids not in segments.parquet: regenerate synthetic data on real segments"
 
 
-def test_risk_output_links(seg):
-    files = sorted(f for f in os.listdir(OUT) if f.startswith("risk_") and f.endswith(".parquet")) if os.path.isdir(OUT) else []
-    if not files:
-        pytest.skip("no outputs/risk_*.parquet yet")
-    r = pd.read_parquet(os.path.join(OUT, files[-1]))
+RISK_FILES = {                                                       # schemas.md section 7
+    "risk_latest.parquet": "Southampton",            # real-label model ranks the plan
+    "risk_brighton_latest.parquet": "Brighton",      # map only, real inputs only
+    "risk_synthetic_latest.parquet": "Southampton",  # synthetic-trained weekly model (what-if)
+}
+
+
+@pytest.mark.parametrize("fname", sorted(RISK_FILES))
+def test_risk_output_links(seg, fname):
+    r = load(os.path.join(OUT, fname))
     assert not missing(r, RISK)
-    assert set(r.segment_id) <= set(seg.segment_id)
+    city_ids = set(seg.loc[seg.city == RISK_FILES[fname], "segment_id"])
+    assert set(r.segment_id) <= city_ids, f"{fname}: segment_ids not in {RISK_FILES[fname]} segments"
     assert r[["p7", "p30"]].apply(lambda c: c.between(0, 1)).all().all()
     assert (r.groupby("segment_id").size() == 4).all(), "4 weekly rows per scored segment"
     assert set(r.horizon_week.unique()) <= {1, 2, 3, 4}
+
+
+def test_plan_risk_is_real_label():
+    """risk_latest ranks the plan: trained on real reports, history source stated per row."""
+    r = load(os.path.join(OUT, "risk_latest.parquet"))
+    assert not missing(r, ["trained_on", "history_source"])
+    assert set(r.trained_on.unique()) == {"real"}, "the plan must be ranked by the real-label model"
+    assert set(r.history_source.unique()) <= {"real", "synthetic"}
+
+
+def test_brighton_risk_is_all_real():
+    r = load(os.path.join(OUT, "risk_brighton_latest.parquet"))
+    assert not missing(r, ["trained_on", "history_source"])
+    assert set(r.trained_on.unique()) == {"real"} and set(r.history_source.unique()) == {"real"}
+    assert not r.uses_synthetic.astype(bool).any(), "Brighton map is advertised as 100% real inputs"
+    assert r.wear.isna().all(), "wear is Southampton only (synthetic resurfacing history)"
+
+
+def test_plan_financial_split():
+    """schemas.md section 9, financial split: pays_back / confirmed_pothole / worth_treating."""
+    path = os.path.join(OUT, "prevention_plan_latest.csv")
+    if not os.path.exists(path):
+        pytest.skip("no outputs/prevention_plan_latest.csv yet")
+    plan = pd.read_csv(path, dtype={"confirmed_by": str}, keep_default_na=False)
+    assert not missing(plan, ["avoided_per_gbp", "pays_back", "confirmed_pothole", "worth_treating"])
+    flag = lambda c: plan[c].astype(str).str.strip().str.lower().isin(["true", "1"])
+    assert (flag("pays_back") == (plan.avoided_per_gbp.astype(float) >= 1.0)).all(), "pays_back != avoided_per_gbp >= 1"
+    assert (flag("confirmed_pothole") == (plan.confirmed_by.str.strip() != "")).all(), "confirmed_pothole != confirmed_by set"
+    assert (flag("worth_treating") == (flag("pays_back") | flag("confirmed_pothole"))).all(), \
+        "worth_treating != pays_back OR confirmed_pothole"
 
 
 CONFIRMED_BY = {"", "keyword", "gemini", "crew"}

@@ -165,11 +165,17 @@ Conventions as above: string `segment_id`, EPSG:4326, ISO dates, `week_start` = 
 | reason_1, reason_2, reason_3 | str | plain-English top SHAP reasons, e.g. "High HGV + bus load (A33)" |
 | model_version | str | e.g. `risk@2026-10-17T22:40` |
 | trained_on | str | `synthetic`, `real`, or `synthetic+real` |
+| history_source | str | where the past-report history features came from: `real` (FixMyStreet) or `synthetic` (council repair log stand-in, rank-mapped onto 2015–19 FixMyStreet counts) |
 | uses_synthetic | bool | true if any synthetic input/label was used |
 | weather_source | str | `open-meteo` or `mock` |
 | weather_data_date | str | latest weather hour used (for the STALE banner) |
 | uses_forecast | bool | the row depends on forecast weather (`weather_forecast_weekly.parquet`) |
 | forecast_retrieved_at | str | when the forecast used was retrieved. **The STALE banner uses this** (older than 24 h → STALE, plan provisional), not `weather_data_date` |
+
+**Three risk files (from Merge 2):**
+- `outputs/risk_latest.parquet`: Southampton. **Ranks the plan.** Real-label model (`trained_on = real`) with `history_source = synthetic` (Southampton's FixMyStreet reports collapse after 2019). Weekly movement comes from a ward-level weather multiplier from the synthetic-trained weekly model; yearly scale = Southampton FOI repairs.
+- `outputs/risk_brighton_latest.parquet`: Brighton, **map only, 100% real inputs** (`trained_on = real`, `history_source = real`, `uses_synthetic = false`, `wear` blank). Extra columns `city`, `scale_source`. The 4 weeks repeat the yearly risk (no weekly weather model) and the yearly scale is an assumption (`scale_source`), so Brighton p7/p30 are **not comparable** with Southampton's: show band and reasons, not p30.
+- `outputs/risk_synthetic_latest.parquet`: Southampton, synthetic-trained weekly model. Used only for the what-if, as a scenario-vs-baseline hazard ratio applied to `risk_latest`; its levels never mix with the real-label model's.
 
 ## 8. Street lights: `outputs/lights_<YYYY-MM-DD>.parquet` + `outputs/lights_latest.parquet` (lane B → C)
 | Column | Type | Notes |
