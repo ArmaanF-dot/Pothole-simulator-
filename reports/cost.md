@@ -1,40 +1,49 @@
-# Running cost per officer
+# Running cost of report triage (Gemini)
 
-_Generated 2026-10-17T17:27:47+00:00 by `python -m roadsense.agent.cost` from the token log (`outputs/lane_c/token_log.jsonl`). Re-run it after any live Gemini run and this page updates._
+_Generated 2026-10-17T20:47:28+00:00 by `python -m roadsense.agent.cost` from `outputs/lane_c/token_log.jsonl`. Token counts are what the Gemini API returned in `usage_metadata` for each call (triage through `POST /reports`, the demo, or `Service.triage_report`)._
 
-## Measured
+## Measured token counts
 
-Token counts below are what the Gemini API returned in `usage_metadata` for each call: real counts, not estimates.
+| FixMyStreet report | Model that answered | Input tokens | Output tokens | Thinking tokens |
+| --- | --- | --- | --- | --- |
+| fms-10054415 | gemini-3-flash-preview | 910 | 100 | 0 |
+| fms-9996017 | gemini-3-flash-preview | 921 | 106 | 0 |
+| fms-9913130 | gemini-3-flash-preview | 926 | 104 | 0 |
+| fms-9864063 | gemini-3-flash-preview | 892 | 90 | 0 |
+| fms-9815538 | gemini-3-flash-preview | 899 | 93 | 0 |
+| fms-9658382 | gemini-3-flash-preview | 911 | 103 | 0 |
+| fms-9374920 | gemini-3-flash-preview | 900 | 98 | 0 |
+| fms-9313325 | gemini-3-flash-preview | 743 | 90 | 0 |
+| fms-9291752 | gemini-3-flash-preview | 910 | 99 | 0 |
+| fms-9187098 | gemini-3-flash-preview | 919 | 106 | 0 |
 
-| What | Logged | Model | Mean input tokens | Mean output tokens (incl. thinking) | API calls each | £ each at the assumed price |
-| --- | --- | --- | --- | --- | --- | --- |
-| Full triage (agent loop: lookup, duplicates, risk, work order) | 1 | gemini-3.8-flash | 3,254 | 194 | 4.0 | £0.00110 |
-| Classification only (one call, used by the 100-report eval) | 16 | gemini-3.8-flash | 674 | 105 | 1.0 | £0.00035 |
+Mean per triaged report (10 reports): **893 input tokens** and **99 output tokens**, 1 API call(s) each.
 
-Sample size: **1 full triage run(s)** only, so the per-report figure is indicative. Run more reports through `POST /reports` with Gemini on to firm it up.
+Other triage calls in the log (not used for the headline):
 
-## Formula
+- `gemini-3.8-flash`: 1 report(s), mean 3,254 in / 194 out, 4 call(s) each, £0.00238 each.
+
+## Cost
+
+Price of `gemini-3-flash-preview`, paid tier: **$0.50 per 1M input tokens, $3.00 per 1M output tokens (incl. thinking)**. Source: Google AI for Developers, Gemini API pricing, https://ai.google.dev/gemini-api/docs/pricing (page "last updated 2026-10-16 UTC", read 17 Oct 2026).
 
 ```
-£ per report     = (input_tokens x P_in + output_tokens x P_out) / 1,000,000 x FX
-LLM £/officer/mo = £ per report x reports_per_month / officers  (+ £ per plan x plans per officer, 0 today)
-Total            = LLM £/officer/mo + hosting £/month / officers
+£ per report = (input tokens x $0.50 + output tokens x $3.00) / 1,000,000 x 0.75 £/$
+             = (893 x 0.50 + 99 x 3.00) / 1,000,000 x 0.75 = £0.000557
 ```
 
-with P_in = $0.3, P_out = $2.5 per million tokens, FX = £0.75 per $, reports_per_month = 300, officers = 4, hosting = £25/month.
+- **£0.00056 per triaged report** (about £0.56 per 1,000 reports).
+- **Yearly cost, upper end: £2.10** if every Southampton pothole repair came in as a triaged report: 3,775 a year, the mean of the council's pothole **repairs** 2021-25 (4,002 / 3,972 / 3,627 / 4,162 / 3,113; FOI via Blackcircles, March 2026). These are repairs, not reports.
+- **Yearly cost, FixMyStreet only: £0.02**: 40 Southampton FixMyStreet road-surface **reports** in the 12 months to the latest one in the cached pull. Most residents now report through the council's own system, whose volume is not public.
+- Duplicates within 15 m and 14 days reuse the original's triage with no Gemini call, so real call counts are lower.
 
-## Result
+## Per officer per month (assumptions)
 
-£0.00110 per report x 300 / 4 = **£0.08 LLM** + £6.25 hosting = **£6.33 per officer per month** (from 1 measured full triage run(s); the token count is measured, the price and volumes are assumptions).
+£0.00056 x 3,775 reports / 12 / 4 officers = **£0.04 LLM** + £25 hosting / 4 = £6.25 -> **£6.29 per officer per month**.
 
-## Plan value horizon (avoided_per_gbp)
+## Not measured (assumptions)
 
-Expected reactive repairs avoided over each treatment's service life, x £87.80, per £ of treatment. Service lives (assumptions, typical UK ranges): crack sealing 3 years, surface dressing 8 years, patch 5 years, resurface 15 years, permanent repair 5 years. Hazard is held at today's level, no discounting. A confirmed pothole is costed as one permanent repair: £87.80 reactive avoided / £56.94 planned = ×1.54 (ALARM 2025).
-
-## Not measured (config assumptions)
-
-- **Price:** $0.3/M input and $2.5/M output is the Gemini 2.5 Flash paid-tier list price, applied to every model. Triage falls back through `gemini-3.8-flash`, `gemini-3-flash-preview`, `gemini-flash-latest`; the table shows which model answered each call. None of their prices has been checked, so confirm each on ai.google.dev/pricing before quoting the £ figure.
-- **Volume:** 300 reports a month city-wide (about 3,600 Southampton pothole repairs a year, FOI 2021-2025) shared by 4 officers. Both are assumptions.
-- **Hosting:** £25 a month for one small VM running the API and page. Assumption.
-- **The weekly plan uses no LLM**, so it adds no token cost.
-- **The free tier** costs nothing but is rate-limited (5 requests a minute; a live run hit the daily quota on 17 Oct) and may use prompts to improve Google's products, so only public reports and synthetic data are sent.
+- Exchange rate 0.75 £/$ (assumption, not a quoted rate).
+- 4 officers and £25 a month for one small VM running the API and page.
+- Prices are list prices for the paid tier; the free tier costs £0 but is rate-limited (5 requests a minute per model) and Google may use the prompts to improve its products, so only public reports and synthetic data are sent.
+- `gemini-flash-latest` (last in the fallback list) is not on the pricing page, so calls it answers are not priced.
