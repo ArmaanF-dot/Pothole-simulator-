@@ -89,9 +89,20 @@ def build(cfg, cities):
     out = pd.concat(frames, ignore_index=True)
     out["week_start"] = out["week_start"].dt.tz_localize(None).dt.date.astype(str)
     out["source"] = "open-meteo"
-    path = os.path.join(ROOT, cfg["paths"]["processed_dir"], "weather_weekly.parquet")
+    proc = os.path.join(ROOT, cfg["paths"]["processed_dir"])
+    path = os.path.join(proc, "weather_weekly.parquet")
+    if os.path.exists(path):   # keep the cities not rebuilt this run
+        old = pd.read_parquet(path)
+        out = pd.concat([old[~old.city.isin(cities)], out], ignore_index=True)
     out.to_parquet(path, index=False)
     print(f"{len(out):,} ward-weeks, {out.ward.nunique()} wards, {out.week_start.min()} to {out.week_start.max()} -> {path}")
+
+    # Forecast weeks: week_start after today (the next weeks, built from the Open-Meteo forecast)
+    today = pd.Timestamp.now(tz="UTC").date().isoformat()
+    fc = out[out.week_start > today].reset_index(drop=True)
+    fc_path = os.path.join(proc, "weather_forecast_weekly.parquet")
+    fc.to_parquet(fc_path, index=False)
+    print(f"{len(fc):,} forecast ward-weeks ({', '.join(sorted(fc.week_start.unique()))}) -> {fc_path}")
     return out
 
 
