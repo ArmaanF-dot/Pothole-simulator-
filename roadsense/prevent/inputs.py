@@ -135,9 +135,12 @@ def normalise_risk(r: pd.DataFrame) -> pd.DataFrame:
     row per segment with p30_w0..p30_w3. Also accepts lane B's older wide file."""
     r = r.copy()
     if "horizon_week" in r:
-        r["horizon_week"] = r["horizon_week"].astype(int)
+        # schemas.md v2 numbers forecast weeks 1-4; older files used 0-3. Internally w0 = first week.
+        r["horizon_week"] = r["horizon_week"].astype(int) - int(r["horizon_week"].min())
         piv = r.pivot_table(index="segment_id", columns="horizon_week", values="p30")
         fc = r.groupby("segment_id")["uses_forecast"].any() if "uses_forecast" in r else None
+        fra = r["forecast_retrieved_at"].dropna().astype(str) if "forecast_retrieved_at" in r else pd.Series(dtype=str)
+        r.attrs["forecast_retrieved_at"] = fra.max() if len(fra) else None
         r = r[r["horizon_week"] == r["horizon_week"].min()].copy()
         for k in piv.columns:
             r[f"p30_w{k}"] = r["segment_id"].map(piv[k])
@@ -156,7 +159,9 @@ def normalise_risk(r: pd.DataFrame) -> pd.DataFrame:
         r["p30_w0"] = r["p30"]
     weeks = [c for c in ["p30_w0", "p30_w1", "p30_w2", "p30_w3"] if c in r]
     r["p30_trend"] = r[weeks[-1]] - r["p30_w0"]
-    return r.reset_index(drop=True)
+    out = r.reset_index(drop=True)
+    out.attrs = r.attrs
+    return out
 
 
 def _overlap(ids: pd.Series, seg: pd.DataFrame | None) -> float:
@@ -166,13 +171,19 @@ def _overlap(ids: pd.Series, seg: pd.DataFrame | None) -> float:
 def load_risk(cfg: dict, root: Path | None = None, seg: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict]:
     """Lane B's risk file when its segment ids match `seg`; otherwise a labelled mock on `seg`
     (lane B still runs on mock segments until lane A's files are merged)."""
-    p = latest(resolve(cfg, "outputs_dir", root), "risk")
-    if p is not None:
+    p = None
+    for d in [resolve(cfg, "outputs_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
+        p = latest(d, "risk")
+        if p is None:
+            continue
         r = normalise_risk(pd.read_parquet(p))
         if _overlap(r["segment_id"], seg) >= 0.5:
-            kind = "mock" if bool(r["inputs_mock"].any()) else "real"
+            kind = "mock" if bool(r["inputs_mock"].any()) else "synthetic"
             return r, {"name": "risk", "path": _rel(p, root), "kind": kind, "retrieved_at": _mtime(p),
-                       "as_of": str(r["as_of"].iloc[0]) if "as_of" in r else None}
+                       "as_of": str(r["as_of"].iloc[0]) if "as_of" in r else None,
+                       "forecast_retrieved_at": r.attrs.get("forecast_retrieved_at"),
+                       "trained_on": str(r["trained_on"].iloc[0]) if "trained_on" in r else None,
+                       "model_version": str(r["model_version"].iloc[0]) if "model_version" in r else None}
     from roadsense.prevent.mock import mock_risk, mock_world
     r = normalise_risk(mock_risk(seg, cfg) if seg is not None else mock_world(cfg)["risk"])
     return r, {"name": "risk", "path": None, "kind": "mock", "retrieved_at": None, "as_of": str(r["as_of"].iloc[0]),
@@ -189,14 +200,18 @@ def normalise_lights(l: pd.DataFrame) -> pd.DataFrame:
                  ("as_of", None), ("source", None)]:
         if c not in l:
             l[c] = v
+    l["dark_source"] = l["dark_source"].replace("", None)
     if "due_90d" not in l:
         l["due_90d"] = pd.to_datetime(l["replace_by"]) <= pd.to_datetime(l["as_of"]) + pd.Timedelta(days=90)
     return l
 
 
 def load_lights(cfg: dict, root: Path | None = None, seg: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict]:
-    p = latest(resolve(cfg, "outputs_dir", root), "lights")
-    if p is not None:
+    p = None
+    for d in [resolve(cfg, "outputs_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
+        p = latest(d, "lights")
+        if p is None:
+            continue
         l = normalise_lights(pd.read_parquet(p))
         if _overlap(l["segment_id"], seg) >= 0.5:
             return l, {"name": "lights", "path": _rel(p, root), "kind": "synthetic", "retrieved_at": _mtime(p),
@@ -209,12 +224,21 @@ def load_lights(cfg: dict, root: Path | None = None, seg: pd.DataFrame | None = 
 def load_forecast_meta(cfg: dict, root: Path | None = None) -> dict:
     """When the weather forecast was retrieved. Lane A writes weather_forecast_weekly.parquet with
     a retrieved_at column; until then the risk file's weeks 1-3 are climatology (no forecast)."""
-    p = resolve(cfg, "processed_dir", root) / "weather_forecast_weekly.parquet"
-    if not p.exists():
-        return {"available": False, "retrieved_at": None, "path": None}
-    fc = pd.read_parquet(p)
-    ra = str(fc["retrieved_at"].max()) if "retrieved_at" in fc else _mtime(p)
-    return {"available": True, "retrieved_at": ra, "path": _rel(p, root)}
+    for p in [resolve(cfg, "processed_dir", root) / "weather_forecast_weekly.parquet",
+              resolve(cfg, "processed_dir", root) / "weather_weekly.parquet",
+              resolve(cfg, "lane_c_copy_dir", root) / "weather_weekly.parquet"]:
+        if not p.exists():
+            continue
+        w = pd.read_parquet(p)
+        if "uses_forecast" in w:
+            w = w[w["uses_forecast"].astype(bool)]
+        if w.empty:
+            continue
+        ra = str(w["retrieved_at"].max()) if "retrieved_at" in w else _mtime(p)
+        dd = str(w["data_date"].max()) if "data_date" in w else None
+        return {"available": True, "retrieved_at": ra, "data_date": dd, "path": _rel(p, root),
+                "source": str(w["source"].iloc[0]) if "source" in w else "open-meteo"}
+    return {"available": False, "retrieved_at": None, "path": None}
 
 
 def load_fms(cfg: dict, root: Path | None = None, city: str = "Southampton", all_reports: bool = False) -> pd.DataFrame:
@@ -231,8 +255,17 @@ def load_fms(cfg: dict, root: Path | None = None, city: str = "Southampton", all
 
 
 def synthetic_meta(cfg: dict, root: Path | None = None) -> dict | None:
-    p = resolve(cfg, "synthetic_dir", root) / "_meta.json"
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    for d in [resolve(cfg, "synthetic_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
+        if (d / "_meta.json").exists():
+            return json.loads((d / "_meta.json").read_text(encoding="utf-8"))
+    return None
+
+
+def crew_outcomes_path(cfg: dict, root: Path | None = None) -> Path | None:
+    for d in [resolve(cfg, "synthetic_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
+        if (d / "crew_outcomes.csv").exists():
+            return d / "crew_outcomes.csv"
+    return None
 
 
 # --- spatial helpers ----------------------------------------------------------------------------

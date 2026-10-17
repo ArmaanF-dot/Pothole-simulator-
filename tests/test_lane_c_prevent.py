@@ -113,7 +113,7 @@ def test_rain_then_frost_raises_risk_most_on_high_load(cfg, world):
 def test_other_scenarios_raise_risk(cfg, world, scenario):
     scn = W.apply_scenario(world["risk"], world["segments"], scenario, cfg, method="surrogate")
     assert (scn["p30_w1"] >= world["risk"]["p30_w1"]).all()
-    assert (scn["p30_w0"] == world["risk"]["p30_w0"]).all()  # observed week untouched
+    assert (scn["p30_w3"] == world["risk"]["p30_w3"]).all()  # week 4 is climatology, untouched
 
 
 def test_unknown_scenario(cfg, world):
@@ -173,3 +173,12 @@ def test_real_segments_copy_with_mock_risk(cfg):
     assert nh.any() and not sc.loc[nh, "scored"].any()
     assert set(sc["load_confidence"]) <= {"high", "medium", "low"}
     assert sc["scored"].sum() > 0.9 * (~nh).sum()
+
+
+def test_horizon_weeks_one_to_four_and_forecast_time(world):
+    long = mock_risk(world["segments"])
+    long["horizon_week"] += 1  # schemas.md v2 numbering
+    long["forecast_retrieved_at"] = np.where(long["horizon_week"] <= 3, "2026-10-17T12:36+00:00", None)
+    r = I.normalise_risk(long)
+    assert {"p30_w0", "p30_w3"} <= set(r.columns) and "p30_w4" not in r
+    assert r.attrs["forecast_retrieved_at"] == "2026-10-17T12:36+00:00"

@@ -98,6 +98,9 @@ class Context:
         if not I.in_coverage(lon, lat, self.cfg):
             return {"in_coverage": False, "status": "out_of_coverage", "message": "Outside Southampton coverage"}
         j_any, d_any = self.index.nearest(lon, lat)
+        if d_any > t.get("max_road_distance_m", self.cfg["coverage"].get("max_road_distance_m", 1e9)):
+            return {"in_coverage": False, "status": "out_of_coverage",
+                    "message": f"Outside Southampton coverage (no city road within {self.cfg['coverage']['max_road_distance_m']} m)"}
         if j_any is not None and d_any <= t["snap_radius_m"] and not self.council[j_any]:
             r = self.scored.iloc[j_any]
             return {"in_coverage": True, "status": "national_highways", "segment_id": r["segment_id"],

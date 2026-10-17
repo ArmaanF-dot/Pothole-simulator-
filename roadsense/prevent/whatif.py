@@ -70,11 +70,12 @@ def model_rescore(risk: pd.DataFrame, scenario: str, cfg: dict, root: Path | Non
 
     base = predict(fwd)
     pert = fwd.copy()
-    m = pert["horizon_week"].isin(cfg["whatif"]["weeks"]).values
+    shift = int(fwd["horizon_week"].min())  # lane B numbers weeks 1-4 (schemas.md v2); lane C uses 0-3
+    m = (pert["horizon_week"] - shift).isin(cfg["whatif"]["weeks"]).values
     for f, v in cfg["whatif"]["scenarios"][scenario].items():
         if f in pert:
             pert.loc[m, f] = pert.loc[m, f] + v
-    diff = pd.DataFrame({"segment_id": fwd["segment_id"], "k": fwd["horizon_week"], "d": predict(pert) - base})
+    diff = pd.DataFrame({"segment_id": fwd["segment_id"], "k": fwd["horizon_week"] - shift, "d": predict(pert) - base})
     piv = diff.pivot_table(index="segment_id", columns="k", values="d")
     if risk["segment_id"].isin(piv.index).mean() < 0.5:
         return None  # lane B's model runs on other segment ids (mock risk on real segments): use the surrogate

@@ -146,7 +146,10 @@ def run(cfg: dict | None = None, root: Path | None = None, forecast_as_of: str |
         from roadsense.prevent.whatif import apply_scenario
         risk = apply_scenario(risk, seg, scenario, cfg, root=root)
     sc = score(seg, risk, cfg, feedback)
-    fresh = freshness(cfg, I.load_forecast_meta(cfg, root), forecast_as_of)
+    fm = I.load_forecast_meta(cfg, root)
+    if risk_meta.get("forecast_retrieved_at"):
+        fm = {**fm, "available": True, "retrieved_at": risk_meta["forecast_retrieved_at"]}
+    fresh = freshness(cfg, fm, forecast_as_of)
     plan = build_plan(sc, cfg, data_dates=data_dates(seg_meta, risk_meta, fresh))
     plan["provisional"] = fresh["provisional"]
     out = None
