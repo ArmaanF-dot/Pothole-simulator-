@@ -313,3 +313,13 @@ def test_second_city_map_only(root):
     assert app.get("/segments", params={"city": "Leeds"}).status_code == 404
     # Southampton plan is unaffected by the second city's segments
     assert all(not row["segment_id"].startswith("BRI-") for row in app.get("/plan/prevention").json()["rows"])
+
+
+def test_second_city_card_has_bands_not_numbers(root):
+    test_second_city_map_only(root)
+    app = TestClient(create_app(Service(root=root)))
+    gj = app.get("/segments", params={"city": "Brighton"}).json()
+    props = gj["features"][0]["properties"]
+    assert "p30" not in props and "rank_pct" not in props and props["risk_band"] in {"top1", "top5", "top10", "rest"}
+    one = app.get(f"/segments/{props['segment_id']}", params={"city": "Brighton"}).json()
+    assert not {"p30", "p7", "rank_pct"} & set(one) and one["risk_label"] and "reasons" in one
