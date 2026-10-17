@@ -11,6 +11,7 @@ _v2, 17 Oct 2026. Sections 1–6 owned by lane A, 7–8 by lane B, 9–10 by lan
 - **Cities:** `Southampton`, `Portsmouth`, `Brighton`. `city_code`: `SOU`, `POR`, `BRI`. Bournemouth (BCP) has no data: see `DATA_GAPS.md`.
 - **Geometry:** stored as WKB in a `geometry` column, **EPSG:4326** (lon/lat). Distances, lengths and snapping are computed in **EPSG:27700** (British National Grid, metres).
 - **Times:** ISO 8601. Report timestamps keep FixMyStreet's UTC offset. `date` columns are `YYYY-MM-DD`. `week_start` is a Monday.
+- **segment_ids are frozen for Southampton** from 17 Oct 12:46: the OSM extract is cached and never re-downloaded (no `--refresh`) before submission. Adding Brighton/Portsmouth only appends rows (`BRI-…`, `POR-…`).
 - **IDs are strings.** `segment_id` = `{city_code}-{osm_way_id}-{part}`, e.g. `SOU-4256781-02` (part = position along the OSM way, from 00). It stays stable as long as the OSM extract doesn't change.
 - **Formats:** `data/processed/*.parquet` for model inputs; CSV for label tables that people open by hand.
 - **Provenance:** every processed file has a `source` column (`fixmystreet`, `osm`, `dft`, `mock` …). Real data never sets `is_synthetic`. Lane B's synthetic files always do.
@@ -140,13 +141,13 @@ Conventions as above: string `segment_id`, EPSG:4326, ISO dates, `week_start` = 
 **Files:** each run writes a dated file (`<name>_<YYYY-MM-DD>`) **and** a copy at `<name>_latest` with the same contents, which the API reads.
 
 ## 7. Risk and wear: `outputs/risk_<YYYY-MM-DD>.parquet` + `outputs/risk_latest.parquet` (lane B writes, lane C reads)
-**4 rows per scored segment, one per forecast week** (`horizon_week` 1–4). Motorways (`owner = national_highways`) are not scored. Residential roads are.
+**4 rows per scored segment, one per forecast week** (`horizon_week` 0–3). Motorways (`owner = national_highways`) are not scored. Residential roads are.
 | Column | Type | Notes |
 |---|---|---|
 | segment_id | str | joins `segments.parquet` |
 | ward | str | from `segments.parquet` (lets the API filter without a join) |
 | week_start | date | forecast week |
-| horizon_week | int | 1–4: weeks ahead of the run date |
+| horizon_week | int | **0–3** (0 = first forecast week), as lane B writes (decided 17 Oct, 14:45) |
 | p7 | float 0–1 | calibrated probability of a pothole in the next 7 days |
 | p30 | float 0–1 | … next 30 days |
 | p30_trend | float | change in p30 against the previous week's row (as defined by lane B) |
@@ -202,3 +203,13 @@ p30_peak, p30_rise, treatment_label, avoided_per_gbp, load_confidence, provision
 (the plan needs the rise and the what-if changes weeks 1–3); dated files plus `*_latest` copies; STALE rule = forecast
 older than 24 h by `forecast_retrieved_at`. Still open: `POST` payloads (lane C defines in the API code) and whether
 `/segments` takes a city filter (needed only once Brighton/Portsmouth are scored).
+
+## 11. Ward boundaries: `data/processed/wards.geojson` (lane A)
+`city, ward, mapit_id, source, geometry` (Polygon/MultiPolygon, EPSG:4326, simplified ~5 m). Ward names match
+`segments.parquet` exactly. Use for the "outside coverage" check (point not in any ward → `out_of_coverage`).
+Source: MapIt (mySociety), boundaries from ONS/OS, OGL. Brighton/Portsmouth wards are appended when those cities are built.
+
+## 12. Data sources for the footer: `data/processed/sources.json` (lane A writes, lane C serves at `GET /sources`)
+`[{name, label, used_for, licence, retrieved_at, data_date, is_synthetic}]`, one entry per real source (OSM, MapIt wards,
+DfT, Open-Meteo, EA flood, FixMyStreet). `retrieved_at` is ISO UTC; `data_date` is the newest date the data describes.
+Lane B appends its synthetic generators (`is_synthetic: true`) or lane C adds them from `data/synthetic/_meta.json`.
