@@ -43,7 +43,7 @@ Last year's weather is in the model, but Open-Meteo gives only 2 to 6 distinct v
 *Source:* `roadsense/models/plan_risk.py` (`NEVER_A_REASON`), `reports/risk_eval.md` (note under "Top 5 features within each city").
 
 **8. How is Brighton different from Southampton?**
-Brighton runs on 100% real inputs: the same model, with real FixMyStreet history, giving an inspection list of open reports first, then the highest-risk roads. There is no wear model, plan or £ for Brighton, because those need the council's resurfacing and cost records.
+Brighton runs on 100% real inputs: the same model, with real FixMyStreet history, giving an inspection list of open reports first, then the 50 roads ranked highest by predicted risk within Brighton. There is no wear model, plan or £ for Brighton, because those need the council's resurfacing and cost records.
 *Numbers:* 55 rows: 5 roads with an open report in the last 120 days, then the top 50 by risk. Held-out: 31.2% vs 21.7%.
 *Source:* `outputs/risk_brighton_latest.parquet` (`uses_synthetic = false`), `GET /plan/inspection?city=Brighton`, `schemas.md` section 17.
 
