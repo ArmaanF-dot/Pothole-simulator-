@@ -10,4 +10,6 @@ de-duplicated (same defect = within 20 m and 30 days). Free-text descriptions re
 Known gaps: Southampton has no reports 2020–2022; Brighton road reports almost stop in 2026.
 Counts reflect FixMyStreet use, not true pothole rates.
 
+`fms_roads_clean.csv` — same columns, pavement/footway defects removed by `clean_labels.py`. **Use this one for training.**
+
 Columns: city, id, category, requested, updated, status, lat, lon, title, surface_keyword
