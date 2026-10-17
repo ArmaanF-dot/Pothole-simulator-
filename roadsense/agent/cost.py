@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from roadsense.prevent import inputs as I
+from roadsense.prevent.redact_titles import redact
 
 
 def read_log(cfg: dict, root: Path | None = None) -> pd.DataFrame:
@@ -141,7 +142,7 @@ def write_triage_report(res: dict, cfg: dict | None = None, root: Path | None = 
         L += ["", f"Gemini model {res['gemini']['model']}, mean {res['gemini']['mean_tokens_per_report']:,.0f} tokens per report.",
               "", "## Disagreements", "", "| FMS id | Title | Label | Keyword | Gemini |", "| --- | --- | --- | --- | --- |"]
         for d in res.get("disagreements", []):
-            L.append(f"| {d['fms_id']} | {str(d['title']).replace('|', '/')} | {d['label']} | {d['keyword']} | {d['gemini']} |")
+            L.append(f"| {d['fms_id']} | {redact(str(d['title'])).replace('|', '/')} | {d['label']} | {d['keyword']} | {d['gemini']} |")
     p = I.resolve(cfg, "reports_dir", root) / "triage_vs_keywords.md"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("\n".join(L) + "\n", encoding="utf-8")

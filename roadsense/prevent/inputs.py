@@ -271,6 +271,8 @@ def load_fms(cfg: dict, root: Path | None = None, city: str = "Southampton", all
     d = pd.read_csv(p)
     d = d[d["city"] == city].copy()
     d["requested"] = pd.to_datetime(d["requested"], utc=True).dt.tz_localize(None)
+    from roadsense.prevent.redact_titles import redact
+    d["title"] = d["title"].map(redact)  # never show house numbers, postcodes or names, even from older files
     d["source"] = "fixmystreet"
     d["retrieved_at"] = _mtime(p)
     return d[["id", "category", "requested", "status", "lat", "lon", "title", "source", "retrieved_at"]]
