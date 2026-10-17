@@ -30,11 +30,12 @@ mock row carries `input_source="mock"`. Mock wards are named "Mock ward 01..17".
 "Currently dark" lamps = `light_faults.csv` rows with status `open` and fault_date in the last 30 days.
 
 ## Model outputs
-| File | Columns |
+The canonical columns are in `schemas.md` sections 7 and 8 (v2). **horizon_week runs 1 to 4** (weeks ahead of as_of), as agreed with lanes A and C on 17 Oct.
+| File | Notes |
 |---|---|
-| `outputs/risk_<as_of>.parquet` | segment_id, ward, week_start, p7, p30, p30_w0..p30_w3 (this week and the next 3), p30_trend, wear_pct (0-100), reason_1..reason_3 (plain text, SHAP), weather_source, labels_synthetic, wear_synthetic, inputs_mock, model_version, as_of |
-| `outputs/lights_<as_of>.parquet` | lamp_id, segment_id, lat, lon, unit_type, unit_install_date, burn_hours, p_fail_90d, predicted_replacement_date, replacement_overdue, due_90d, currently_dark, dark_since, is_synthetic, source, as_of |
-| `data/models/` | risk_y7.txt / risk_y30.txt (LightGBM), *_calibrator.pkl (isotonic), risk_eval.json, lights_weibull.json |
+| `outputs/risk_<as_of>.parquet` + `risk_latest.parquet` | 4 rows per scored segment; extra columns beyond schemas.md: weather_basis (observed/forecast/climatology_10y), inputs_mock, as_of |
+| `outputs/lights_<as_of>.parquet` + `lights_latest.parquet` | extra columns: unit_install_date, burn_hours, replacement_overdue, is_synthetic, model_version, source, as_of |
+| `data/models/` | risk_y7.txt / risk_y30.txt (LightGBM, LF line endings), *_calibrator.pkl (isotonic), risk_eval.json, real_risk_eval.json, lights_weibull.json |
 
 ## Needed at the merge (shared files)
 - Makefile: `synthetic: python -m roadsense.synthetic`, `train: python -m roadsense.models.risk`, `lights: python -m roadsense.models.lights`. Run order: synthetic, train, then synthetic again so crew outcomes select from the model.
