@@ -4,3 +4,5 @@ data/fms_raw.csv
 # Raw API pulls (free text) stay local
 data/raw/
 .venv/
+# API keys: commit .env.example only
+.env
