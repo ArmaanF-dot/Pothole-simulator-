@@ -26,7 +26,7 @@ async function loadMeta() {
   state.meta = m;
   const sel = $("#ward");
   if (sel.options.length === 1) m.wards.forEach((w) => sel.add(new Option(w, w)));
-  $("#badges").innerHTML = badge("SYNTHETIC", "") + (m.badges.mock_inputs ? badge("MOCK INPUTS", "mock") : "")
+  $("#badges").innerHTML = (m.badges.labels_real ? badge("REAL LABELS", "real") + " " : "") + badge("SYNTHETIC", "") + (m.badges.mock_inputs ? badge("MOCK INPUTS", "mock") : "")
     + (m.freshness.stale ? badge("STALE", "stale") : "") + (m.freshness.provisional ? badge("PROVISIONAL", "prov") : "")
     + (m.gemini ? "" : ` <span class="muted small">Gemini off: keyword triage</span>`);
   const b = $("#stale");
@@ -41,7 +41,7 @@ async function loadPlan() {
   $("#plan-head").innerHTML = `${p.count} segments to treat this week${state.ward ? " in " + esc(state.ward) : ""}, as of ${esc(p.as_of)}.`
     + (p.provisional ? " " + badge("PROVISIONAL", "prov") : "")
     + (p.scenario ? ` What-if <b>${esc(p.scenario)}</b> (${esc(p.scenario_method)}).` : "")
-    + (p.trained_on ? ` Model ${esc(p.model_version || "")} trained on <b>${esc(p.trained_on)}</b> labels.` : "")
+    + (p.model_label ? ` Model ${esc(p.model_version || "")}: <b>${esc(p.model_label)}</b>.` : "")
     + ` Ranked by reactive repair cost avoided over each treatment's life per £ of treatment (planned ${gbp(p.costs.planned_repair)} vs reactive ${gbp(p.costs.reactive_repair)}, ${esc(p.costs.source)}).`;
   $("#movers").innerHTML = p.movers.length ? `<div class="card"><b>Biggest risk rises under ${esc(p.scenario)}</b> <span class="small muted">urgency at the 4-week forecast peak, before → after</span>
     <table class="rows"><tbody>${p.movers.map((m) => `<tr data-id="${esc(m.segment_id)}"><td>${esc(m.name)} <span class="small muted">${esc(m.highway)}${m.bus_stop ? " · bus stop" : ""} · ${fmt(m.esal_day, 0)} ESAL/day</span></td>
@@ -64,7 +64,7 @@ function renderPlanRows() {
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         <div class="reasons">${esc(r.reasons)}</div>
-        <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : ""}</div></td>
+        <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : r.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
       <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div></td>
       <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
@@ -123,10 +123,10 @@ async function showSegment(id, fly) {
     <p><span class="u ${s.band}">${fmt(s.urgency, 0)}</span> ${esc(s.band)}${s.confirmed_open ? " · <b>confirmed open pothole</b>" : ""}</p>
     <div class="kv">
       <div>Wear</div><div>${fmt(s.wear_pct, 0)}% ${s.wear_synthetic ? badge("SYNTHETIC") : ""}</div>
-      <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)} ${badge("SYNTHETIC LABELS")}</div>
+      <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)} ${s.labels_synthetic ? badge("SYNTHETIC LABELS") : badge("REAL LABELS", "real")}</div>
       <div>P30 next 4 wks</div><div>${s.risk_weeks.map((w) => `<span title="week of ${esc(w.week_start)}: ${esc(w.weather_basis || "")}${w.forecast_retrieved_at ? ", forecast retrieved " + esc(w.forecast_retrieved_at) : ""}">${fmt(w.p30)}${w.weather_basis === "climatology_10y" ? "<sup>c</sup>" : w.uses_forecast ? "<sup>f</sup>" : ""}</span>`).join(" → ")}
         <div class="small muted">f = Open-Meteo forecast, c = 10-year climatology (beyond the 16-day forecast) · ${OPEN_METEO}</div></div>
-      <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} labels ${badge("SYNTHETIC")}</div>
+      <div>Model</div><div class="small">${esc(s.model_version)} · ${esc(state.meta ? state.meta.badges.model_label : s.trained_on)}${s.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div>
       <div>Consequence</div><div>×${fmt(s.consequence, 2)} ${esc(s.consequence_text)}</div>
       <div>Load</div><div>${fmt(s.esal_day, 0)} ESAL/day · ${esc(s.traffic_note)}${s.load.count_year ? " (DfT count year " + s.load.count_year + ")" : ""}</div>
       <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}</div>
@@ -201,6 +201,7 @@ async function loadLights() {
 async function loadSources() {
   const s = await api("/sources");
   $("#sources").innerHTML = "<b>Data sources:</b> " + s.map((x) => `<span><span title="${esc(x.used_for)}">${esc(x.name)}</span>: ${esc(x.label)}${x.is_synthetic ? " " + badge(x.kind === "mock" ? "MOCK" : "SYNTHETIC", x.kind === "mock" ? "mock" : "") : ""} <span title="${esc(x.licence)}">ⓘ</span></span>`).join("")
+    + (state.meta ? `<span><b>Risk model:</b> ${esc(state.meta.badges.model_label)}</span>` : "")
     + `<span>Map © OpenStreetMap contributors</span><span>${OPEN_METEO}</span>`;
 }
 

@@ -59,8 +59,10 @@ tag, and every screen that uses one shows a **SYNTHETIC** badge.
 | `data/synthetic/streetlights.csv`, `light_faults.csv` | the lighting asset register and fault history |
 | `data/synthetic/crew_outcomes.csv` | inspection results for the feedback loop |
 
-So risk labels, wear and the lighting register are synthetic. Accuracy on synthetic labels is a pipeline check,
-not proof the model works on real roads; the real-data tests are below. Every assumption is in
+The live plan's risk ranking is **trained on real FixMyStreet reports**; only its recent pothole history (mapped
+from the synthetic repair log, because real 2020-26 reports are too thin), road wear and the lighting register are
+synthetic. The dashboard says "trained on real reports · history synthetic". The weekly weather model is trained on
+synthetic labels, so its accuracy is a pipeline check, not proof; the real-data tests are below. Every assumption is in
 `config/synthetic.yaml` and `DATA_GAPS.md`.
 
 ## How well it works
@@ -71,7 +73,7 @@ not proof the model works on real roads; the real-data tests are below. Every as
   resamples. Source: `reports/real_risk_eval.md`.
 - **Frozen 2026 check (Jan to Oct, 33 reports):** model 12.1% vs last-year baseline 12.1%, so no difference at
   that sample size. We report it anyway.
-- **Weekly model on synthetic labels (time split):** PR-AUC 0.253 for 30-day risk vs 0.095 for prior pothole
+- **Weekly weather model on synthetic labels (time split, used for week-to-week movement and the what-if):** PR-AUC 0.253 for 30-day risk vs 0.095 for prior pothole
   count and 0.036 for road age. Pipeline check only. Source: `reports/risk_eval.md`.
 - **Streetlights:** the Weibull model ranks no better than install year (precision in the top 5%: 0.039 vs
   0.036); its value is the replacement date. Source: `reports/lights_eval.md`.

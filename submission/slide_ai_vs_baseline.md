@@ -27,8 +27,10 @@ Footnote line: **Model minus baseline +4.9 points (95% 0.9 to 12.1); model ahead
 - Without past reports the model falls short of the baseline (19.9% vs 33.7%): the physical features alone are not
   enough, the combination is what wins.
 - FixMyStreet counts measure who reports, not where the damage is, and Southampton has no reports for 2020 to 2022.
-- The weekly model behind the live plan is trained on SYNTHETIC repair records (council logs are not public). On
-  those it scores PR-AUC 0.253 for 30-day risk against 0.095 for prior pothole count: a pipeline check, not proof.
+- The live plan is ranked by this real-report model ("trained on real reports · history synthetic": its recent
+  pothole history comes from the SYNTHETIC repair log because council logs are not public). The weekly weather model
+  is trained on synthetic labels; on those it scores PR-AUC 0.253 against 0.095 for prior pothole count: a pipeline
+  check, not proof.
 
 ## Why it matters (one line, from the research doc)
 

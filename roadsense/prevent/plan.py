@@ -127,7 +127,9 @@ def score(seg: pd.DataFrame, risk: pd.DataFrame, cfg: dict, feedback: dict | Non
     df["avoided_per_gbp"] = (df["reactive_cost_avoided_gbp"] / df["treatment_cost_gbp"]).round(4)
     df["wear"] = df["wear_pct"]
     df["open_fms_report"] = df["segment_id"].map(lambda s: bool(feedback.get(s, {}).get("open_report"))) | df["confirmed_open"]
-    df["uses_synthetic"] = df["labels_synthetic"].astype("boolean").fillna(True).astype(bool) if "labels_synthetic" in df else True
+    # uses_synthetic (contract): any synthetic input, e.g. synthetic history even when trained on real reports
+    src = df["uses_synthetic"] if "uses_synthetic" in df else df.get("labels_synthetic", pd.Series(True, index=df.index))
+    df["uses_synthetic"] = src.astype("boolean").fillna(True).astype(bool)
     df["traffic_note"] = df["load_confidence"].map(TRAFFIC_NOTE).fillna(TRAFFIC_NOTE["low"])
     df["status"] = np.where(nh, "National Highways road, not scored",
                             np.where(df["p30"].isna(), "no risk score", "scored"))
@@ -254,7 +256,7 @@ CONTRACT_COLS = ["rank", "segment_id", "ward", "name", "ref", "band", "urgency",
                  "confirmed_is_synthetic", "worth_treating"]
 PLAN_COLS = CONTRACT_COLS + ["highway", "p30_peak", "p30_rise", "consequence", "consequence_text", "treatment_label",
                              "avoided_per_gbp", "reasons", "cost_logic", "esal_day", "load_confidence", "traffic_note",
-                             "weather_source", "model_version", "as_of", "labels_synthetic", "wear_synthetic",
+                             "weather_source", "model_version", "as_of", "labels_synthetic", "history_source", "wear_synthetic",
                              "inputs_mock", "p30_w0", "value_badge", "preventive_treatment",
                              "preventive_treatment_label", "preventive_treatment_cost_gbp",
                              "preventive_reactive_cost_avoided_gbp", "preventive_avoided_per_gbp"]

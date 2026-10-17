@@ -169,8 +169,12 @@ def normalise_risk(r: pd.DataFrame) -> pd.DataFrame:
         r["wear_pct"] = r["wear"]
     if "uses_synthetic" in r:
         r["labels_synthetic"] = r["uses_synthetic"].astype(bool)
+    if "trained_on" in r:
+        # labels are synthetic unless the model was trained on real reports only (trained_on = "real");
+        # uses_synthetic stays true when other inputs (e.g. history_source) are synthetic
+        r["labels_synthetic"] = r["trained_on"].astype(str).str.strip().str.lower().ne("real")
         r["wear_synthetic"] = r["uses_synthetic"].astype(bool)
-    for c, v in [("labels_synthetic", True), ("wear_synthetic", True), ("inputs_mock", False),
+    for c, v in [("labels_synthetic", True), ("wear_synthetic", True), ("inputs_mock", False), ("history_source", None),
                  ("uses_synthetic", True), ("weather_source", "unknown"), ("weather_data_date", None)]:
         if c not in r:
             r[c] = v
@@ -202,6 +206,7 @@ def load_risk(cfg: dict, root: Path | None = None, seg: pd.DataFrame | None = No
                        "as_of": str(r["as_of"].iloc[0]) if "as_of" in r else None,
                        "forecast_retrieved_at": r.attrs.get("forecast_retrieved_at"),
                        "trained_on": str(r["trained_on"].iloc[0]) if "trained_on" in r else None,
+                       "history_source": str(r["history_source"].dropna().iloc[0]) if r["history_source"].notna().any() else None,
                        "model_version": str(r["model_version"].iloc[0]) if "model_version" in r else None}
     from roadsense.prevent.mock import mock_risk, mock_world
     r = normalise_risk(mock_risk(seg, cfg) if seg is not None else mock_world(cfg)["risk"])
@@ -367,3 +372,13 @@ def in_coverage(lon: float, lat: float, cfg: dict, wards: dict | None = None) ->
         return bool(wards["union"].covers(Point(lon, lat)))
     lon0, lat0, lon1, lat1 = cfg["coverage"]["bbox"]
     return lon0 <= lon <= lon1 and lat0 <= lat <= lat1
+
+
+def model_label(trained_on: str | None, history_source: str | None) -> str:
+    """Plain-English provenance of the risk scores, for the header, footer and plan rows."""
+    t = (trained_on or "synthetic").strip().lower()
+    label = {"real": "trained on real reports", "synthetic+real": "trained on real and synthetic reports"}.get(
+        t, "trained on synthetic labels")
+    if history_source:
+        label += " · history synthetic" if "synthetic" in str(history_source).lower() else " · history real"
+    return label
