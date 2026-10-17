@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 17 Oct 2026, 12:55_
+_Last updated: 17 Oct 2026, 13:15_
 
 ## Done
 - `pull_fixmystreet.py` pulls FixMyStreet road/pavement reports for Southampton, Portsmouth and Brighton (2008–2026).
@@ -19,14 +19,16 @@ _Last updated: 17 Oct 2026, 12:55_
     New outputs go to `data/processed/` (labels now have `in_window`). Settings are in `config.yaml`. Raw pulls go to `data/raw/` (git-ignored).
   - Southampton "Street lighting" reports added: `data/processed/fms_streetlights.csv` (211), for lane B's streetlight check.
   - BCP and the other data gaps logged in `DATA_GAPS.md`.
+  - **M1 done for Southampton (steps 1–2 below):** `data/processed/segments.parquet`, 8,145 segments ≤200 m, 600 km (126 km main road), with ward, bus_stop, bus_routes, junction and owner. All road classes are kept, and `is_main_road` marks A/B roads. Run with `.venv` Python: `python -m roadsense.ingest.osm Southampton` then `python -m roadsense.features.segments Southampton`. Lane B's loader reads it unchanged.
 
 ## Next (in order)
-0. Lane B to answer the open questions in `schemas.md`. At merge, delete the old `data/fms_*.csv` (lane B still points at `data/fms_dedup.csv`).
+0. **Team decision needed:** only 27% of Southampton 2015–19 reports (261 of 997) are on main roads. 98% are within 25 m of some road. Score on main roads only (few labels) or on all roads? See `schemas.md` open question 4.
+   Lane B to answer the other open questions in `schemas.md`. At merge, delete the old `data/fms_*.csv` (lane B still points at `data/fms_dedup.csv`).
    Lane A milestones M1–M3 follow steps 1–4 below and write to `data/processed/` as `schemas.md` describes.
-1. **Road segments (OpenStreetMap, ODbL):** `osmnx.graph_from_place("Southampton, UK", network_type="drive")`;
+1. ~~**Road segments**~~ done (M1), see above. Original plan: `osmnx.graph_from_place("Southampton, UK", network_type="drive")`;
    keep highway = primary/secondary/tertiary (≈ A/B roads); project to EPSG:27700; cut into ~200 m segments;
    save `data/segments_southampton.gpkg` (id, road name, ref, highway, length_m, geometry).
-2. **Bus routes (OSM `route=bus` relations):** count routes per segment → `bus_routes` column.
+2. ~~**Bus routes**~~ done (in segments.parquet): count routes per segment → `bus_routes` column.
 3. **Snap reports to segments:** nearest segment within 25 m (EPSG:27700); further away = side street/pavement, drop.
    Output: label table segment × year → `had_report` (0/1).
 4. **Traffic load (DfT road traffic statistics, OGL):** count points with HGV/bus AADF; join to nearest segment on the
