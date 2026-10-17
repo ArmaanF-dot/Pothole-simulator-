@@ -1,7 +1,7 @@
 """Real-label "where" model on FixMyStreet reports from several port cities (M5, real data).
 
 Follows lane A's schema (schemas.md) and agreed windows (config.yaml: labels.windows):
-row = main-road segment x year, label had_report, features use only earlier years.
+row = segment x year on all road classes (is_main_road is a feature), label had_report, features use only earlier years.
 Pooled across cities with city as a categorical feature, and sample weights so each city
 contributes equal total positive weight. Validated per city on its test years and
 leave-one-city-out; scored as lane A agreed: share of a year's reports that fall on the top
@@ -496,7 +496,7 @@ def write_report(path: Path, res: dict, table: pd.DataFrame, radius, inp):
     src = inp["reports"].attrs.get("path") if inp.get("reports") is not None else "data/processed/labels_segment_year.csv"
     L = ["# Real-label risk model (FixMyStreet, real data)", "",
          f"_Generated {now} by `python -m roadsense.models.real_risk` ({MODEL_VERSION})._", "",
-         f"Labels: real FixMyStreet road-surface reports (`{src}`), snapped to main-road segments within {radius} m. "
+         f"Labels: real FixMyStreet road-surface reports (`{src}`), snapped to segments on all road classes within {radius} m (is_main_road is a feature, not a filter). "
          "Counts measure reporting, not pothole rates; scores rank segments within one city and year.", "",
          "Score: share of that year's reports on the top 10% of road length (mean over test years, 95% paired segment bootstrap).", ""]
 
