@@ -62,6 +62,8 @@ class Service:
         self.risk, self.risk_meta = I.load_risk(self.cfg, self.root, seg=self.seg)
         self.lights, self.lights_meta = I.load_lights(self.cfg, self.root, seg=self.seg)
         self.fms = I.load_fms(self.cfg, self.root)
+        self.wards = I.load_wards(self.cfg, self.root)
+        self.manifest = I.load_sources_manifest(self.cfg, self.root)
         self.forecast_meta = I.load_forecast_meta(self.cfg, self.root)
         if self.risk_meta.get("forecast_retrieved_at"):  # schemas.md section 7: STALE uses the forecast the risk rows used
             self.forecast_meta = {**self.forecast_meta, "available": True,
@@ -95,7 +97,7 @@ class Service:
     # --- scoring -------------------------------------------------------------------------------
     def rescore(self):
         self.scored = P.score(self.seg, self.risk, self.cfg, self.feedback)
-        self.ctx = TR.Context(self.cfg, self.scored, self.lights, self.queue)
+        self.ctx = TR.Context(self.cfg, self.scored, self.lights, self.queue, wards=self.wards)
         self._scenario_scored: dict[str, pd.DataFrame] = {}
 
     def scored_for(self, scenario: str | None) -> pd.DataFrame:
@@ -270,6 +272,11 @@ class Service:
 
         cached = lambda m: "cached, retrieved " + str(m.get("retrieved_at"))[:10]
         sm, rm, lm = self.seg_meta, self.risk_meta, self.lights_meta
+        if self.manifest:
+            # lane A's data/processed/sources.json covers every real source: its label is the footer text
+            out = [{"kind": "real", "path": "data/processed/sources.json", **s,
+                    "label": f"{s.get('label') or s['name']} ({cached(s)})"} for s in self.manifest]
+            return out + self._lane_bc_sources(src, rm, lm)
         out = [src("segments", "road map, wards, bus stops and routes, flood areas", LICENCES["segments"],
                    sm.get("retrieved_at"), None, sm["kind"] == "mock", "MOCK" if sm["kind"] == "mock" else cached(sm),
                    sm["kind"], sm["path"])]
@@ -280,30 +287,32 @@ class Service:
             out.append(src("traffic_load", "HGV and bus load (esal_day) per segment", "DfT road traffic statistics, OGL",
                            sm.get("retrieved_at"), None, False, cached(sm) + "; count year shown per segment", "real",
                            sm["load_path"]))
-        out.append(src("risk", "pothole risk P7/P30, wear and reasons", LICENCES["risk"], rm.get("retrieved_at"),
-                       rm.get("as_of"), True, "MOCK" if rm["kind"] == "mock" else "SYNTHETIC labels", rm["kind"], rm["path"]))
-        out.append(src("lights", "lamps due for replacement and currently dark", LICENCES["lights"], lm.get("retrieved_at"),
-                       lm.get("as_of"), True, "MOCK" if lm["kind"] == "mock" else "SYNTHETIC", lm["kind"], lm["path"]))
+        out += [s for s in self._lane_bc_sources(src, rm, lm) if s["name"] != "repair_costs"]
         if len(self.fms):
             out.append(src("fixmystreet_reports", "open pothole layer and report triage", LICENCES["fixmystreet"],
                            self.fms["retrieved_at"].iloc[0], str(self.fms["requested"].max().date()), False,
                            "cached, retrieved " + str(self.fms["retrieved_at"].iloc[0])[:10], "real", self.cfg["paths"]["fms_csv"]))
-        if self.synthetic_meta:
-            out.append(src("synthetic_council_data", "repair log, resurfacing, lighting register, crew outcomes",
-                           LICENCES["synthetic"], None, self.synthetic_meta.get("as_of"), True, "SYNTHETIC", "synthetic",
-                           self.cfg["paths"]["synthetic_dir"]))
         fr = self.freshness()
         out.append(src("weather_forecast", "forward risk (weeks 1-3)", LICENCES["forecast"], fr["forecast_retrieved_at"],
                        self.forecast_meta.get("data_date"),
                        False, fr["message"], "real" if self.forecast_meta["available"] else "missing",
                        self.forecast_meta.get("path")))
+        return out + [s for s in self._lane_bc_sources(src, rm, lm) if s["name"] == "repair_costs"]
+
+    def _lane_bc_sources(self, src, rm, lm) -> list[dict]:
+        """Synthetic and model outputs (lanes B and C), shown after the real sources."""
+        out = [src("risk", "pothole risk P7/P30, wear and reasons", LICENCES["risk"], rm.get("retrieved_at"),
+                   rm.get("as_of"), True, "MOCK" if rm["kind"] == "mock" else
+                   f"SYNTHETIC labels ({rm.get('model_version') or 'model'}, trained on {rm.get('trained_on') or 'synthetic'})",
+                   rm["kind"], rm["path"]),
+               src("lights", "lamps due for replacement and currently dark", LICENCES["lights"], lm.get("retrieved_at"),
+                   lm.get("as_of"), True, "MOCK" if lm["kind"] == "mock" else "SYNTHETIC", lm["kind"], lm["path"])]
+        if self.synthetic_meta:
+            out.append(src("synthetic_council_data", "repair log, resurfacing, lighting register, crew outcomes",
+                           LICENCES["synthetic"], None, self.synthetic_meta.get("as_of"), True, "SYNTHETIC", "synthetic",
+                           self.cfg["paths"]["synthetic_dir"]))
         out.append(src("repair_costs", "cost per £ ranking", LICENCES["costs"], None, "2025", False,
                        "treatment £/m² are ASSUMPTIONS", "published", "roadsense/prevent/prevent.yaml"))
-        # lane A may write a manifest of every real source (DfT, BODS, EA, Open-Meteo, ONS)
-        man = I.resolve(self.cfg, "processed_dir", self.root) / "sources.json"
-        if man.exists():
-            for s in json.loads(man.read_text(encoding="utf-8")):
-                out.append({"is_synthetic": False, "label": s.get("label") or cached(s), "kind": "real", **s})
         return out
 
     # --- writes --------------------------------------------------------------------------------

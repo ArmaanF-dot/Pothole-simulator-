@@ -235,6 +235,7 @@ def load_forecast_meta(cfg: dict, root: Path | None = None) -> dict:
     a retrieved_at column; until then the risk file's weeks 1-3 are climatology (no forecast)."""
     for p in [resolve(cfg, "processed_dir", root) / "weather_forecast_weekly.parquet",
               resolve(cfg, "processed_dir", root) / "weather_weekly.parquet",
+              resolve(cfg, "lane_c_copy_dir", root) / "weather_forecast_weekly.parquet",
               resolve(cfg, "lane_c_copy_dir", root) / "weather_weekly.parquet"]:
         if not p.exists():
             continue
@@ -318,6 +319,37 @@ def distance_m(lon1, lat1, lon2, lat2) -> np.ndarray:
     return np.hypot(x1 - x2, y1 - y2)
 
 
-def in_coverage(lon: float, lat: float, cfg: dict) -> bool:
+def _processed_or_copy(cfg: dict, root: Path | None, name: str) -> Path | None:
+    for d in [resolve(cfg, "processed_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
+        if (d / name).exists():
+            return d / name
+    return None
+
+
+def load_wards(cfg: dict, root: Path | None = None):
+    """Ward polygons (lane A data/processed/wards.geojson, MapIt/ONS, OGL) as shapely geometries, or None."""
+    p = _processed_or_copy(cfg, root, "wards.geojson")
+    if p is None:
+        return None
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+    g = json.loads(p.read_text(encoding="utf-8"))
+    feats = [f for f in g["features"] if f["properties"].get("city", cfg["coverage"]["city"]) == cfg["coverage"]["city"]]
+    if not feats:
+        return None
+    return {"union": unary_union([shape(f["geometry"]) for f in feats]), "n": len(feats), "path": _rel(p, root)}
+
+
+def load_sources_manifest(cfg: dict, root: Path | None = None) -> list[dict] | None:
+    """Lane A's data/processed/sources.json: [{name, label, used_for, licence, retrieved_at, data_date, is_synthetic}]."""
+    p = _processed_or_copy(cfg, root, "sources.json")
+    return json.loads(p.read_text(encoding="utf-8")) if p is not None else None
+
+
+def in_coverage(lon: float, lat: float, cfg: dict, wards: dict | None = None) -> bool:
+    """Inside a Southampton ward polygon when wards are available, else inside the city bbox."""
+    if wards is not None:
+        from shapely.geometry import Point
+        return bool(wards["union"].covers(Point(lon, lat)))
     lon0, lat0, lon1, lat1 = cfg["coverage"]["bbox"]
     return lon0 <= lon <= lon1 and lat0 <= lat <= lat1

@@ -86,6 +86,7 @@ class Context:
     scored: pd.DataFrame
     lights: pd.DataFrame
     queue: list[dict] = field(default_factory=list)
+    wards: dict | None = None
 
     def __post_init__(self):
         self.scored = self.scored.reset_index(drop=True)
@@ -95,10 +96,12 @@ class Context:
     # tools -------------------------------------------------------------
     def lookup_location(self, lat: float, lon: float) -> dict:
         t = self.cfg["triage"]
-        if not I.in_coverage(lon, lat, self.cfg):
-            return {"in_coverage": False, "status": "out_of_coverage", "message": "Outside Southampton coverage"}
+        if not I.in_coverage(lon, lat, self.cfg, self.wards):
+            return {"in_coverage": False, "status": "out_of_coverage",
+                    "message": "Outside Southampton coverage (not in any of the city's 17 wards)" if self.wards
+                    else "Outside Southampton coverage"}
         j_any, d_any = self.index.nearest(lon, lat)
-        if d_any > t.get("max_road_distance_m", self.cfg["coverage"].get("max_road_distance_m", 1e9)):
+        if self.wards is None and d_any > self.cfg["coverage"].get("max_road_distance_m", 1e9):
             return {"in_coverage": False, "status": "out_of_coverage",
                     "message": f"Outside Southampton coverage (no city road within {self.cfg['coverage']['max_road_distance_m']} m)"}
         if j_any is not None and d_any <= t["snap_radius_m"] and not self.council[j_any]:
@@ -190,9 +193,33 @@ def _report_text(rep: dict) -> str:
             f"lon {rep['lon']:.6f}.\nText: {rep.get('title') or ''}\n{rep.get('detail') or ''}".strip())
 
 
+_last_call = [0.0]
+
+
+def _generate(client, cfg: dict, **kw):
+    """generate_content with pacing and retry on 429 (free tier: 5 requests a minute)."""
+    import time
+    t = cfg["triage"]
+    for attempt in range(t.get("max_retries", 6)):
+        wait = t.get("min_interval_s", 0) - (time.monotonic() - _last_call[0])
+        if wait > 0 and type(client).__module__.startswith("google.genai"):  # pace only the real API, not test fakes
+            time.sleep(wait)
+        _last_call[0] = time.monotonic()
+        try:
+            return client.models.generate_content(**kw)
+        except Exception as e:  # google.genai.errors.ClientError; kept generic so tests can fake it
+            if getattr(e, "code", None) != 429 or attempt == t.get("max_retries", 6) - 1:
+                raise
+            m = re.search(r"retry in ([\d.]+)s", str(e))
+            time.sleep(float(m.group(1)) + 1 if m else 20)
+
+
 def gemini_triage(rep: dict, ctx: Context, client, image: tuple[bytes, str] | None = None,
-                  root: Path | None = None) -> tuple[dict | None, dict, list[str]]:
-    """Run the function-calling loop. Returns (draft_work_order args or None, token usage, tool trace)."""
+                  root: Path | None = None, single_call: bool = False,
+                  kind: str = "triage") -> tuple[dict | None, dict, list[str]]:
+    """Run the function-calling loop. Returns (draft_work_order args or None, token usage, tool trace).
+
+    single_call: skip the lookup tools and ask for draft_work_order straight away (classification eval)."""
     from google.genai import types
     t = ctx.cfg["triage"]
     parts = [types.Part.from_text(text=_report_text(rep))]
@@ -204,14 +231,15 @@ def gemini_triage(rep: dict, ctx: Context, client, image: tuple[bytes, str] | No
         tools=[types.Tool(function_declarations=[
             types.FunctionDeclaration(name=d["name"], description=d["description"], parameters_json_schema=d["parameters"])
             for d in TOOLS])],
-        tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="ANY")),
+        tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(
+            mode="ANY", allowed_function_names=["draft_work_order"] if single_call else None)),
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     usage = {"prompt_tokens": 0, "output_tokens": 0, "thoughts_tokens": 0, "total_tokens": 0, "calls": 0}
     trace, final = [], None
     for _ in range(t["max_turns"]):
-        resp = client.models.generate_content(model=t["model"], contents=contents, config=config)
+        resp = _generate(client, ctx.cfg, model=t["model"], contents=contents, config=config)
         u = _usage(resp)
         for k in u:
             usage[k] += u[k]
@@ -230,7 +258,7 @@ def gemini_triage(rep: dict, ctx: Context, client, image: tuple[bytes, str] | No
         if final is not None:
             break
         contents.append(types.Content(role="user", parts=replies))
-    log_tokens(ctx.cfg, "triage", t["model"], usage, ref=str(rep["report_id"]), root=root)
+    log_tokens(ctx.cfg, kind, t["model"], usage, ref=str(rep["report_id"]), root=root)
     return final, usage, trace
 
 
@@ -310,7 +338,7 @@ def evaluate(cfg: dict | None = None, client=None, root: Path | None = None, lim
         preds, tok = [], []
         for r in lab.itertuples():
             rep = {"report_id": f"eval-{r.fms_id}", "reported_at": "2026-10-12", "lat": 50.90, "lon": -1.44, "title": r.title}
-            d, u, _ = gemini_triage(rep, ctx, client, root=root)
+            d, u, _ = gemini_triage(rep, ctx, client, root=root, single_call=True, kind="triage_eval")
             preds.append((d or {}).get("category", "other"))
             tok.append(u["total_tokens"])
         g = pd.Series(preds, index=lab.index)
