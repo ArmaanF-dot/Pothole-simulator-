@@ -7,11 +7,26 @@ treatment and its cost logic for an officer to approve. A "Worth treating" view 
 treatment costs less than the reactive repairs it avoids, plus every road with a confirmed pothole. Gemini
 triages public FixMyStreet reports into draft work orders. A Brighton map shows the same model on 100% real inputs.
 
+Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampton City track.
+
+## What it does
+
+- **Prevention plan** (Southampton): road segments ranked by reactive repair cost avoided per £ of treatment, with a
+  suggested treatment and the reasons behind each ranking. Split into *All roads* and *Worth treating* (treatment pays
+  for itself, or a confirmed pothole).
+- **Report triage** (Southampton): real FixMyStreet pothole reports are classified (Gemini, with a keyword fallback)
+  and turned into work orders that an officer approves or rejects.
+- **Streetlights** (Southampton, synthetic demo data).
+- **Brighton risk map**: the same risk model applied to Brighton & Hove, a city with plentiful real report data, as an
+  out-of-area check.
+
 ## Quick start
 
 Tested on Python 3.14.7, Windows 11.
 
 ```bash
+git clone [PUBLIC REPO URL]
+cd [REPO FOLDER]
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
@@ -19,6 +34,15 @@ copy .env.example .env            # add GEMINI_API_KEY (optional: triage falls b
 python -m roadsense.api           # open http://127.0.0.1:8000
 pytest -q                         # contract + unit tests, no network
 ```
+
+Needs git. `.env` holds `GEMINI_API_KEY` only (free from Google AI Studio); without it the map and plan work and triage
+falls back to keyword classification. Press Ctrl+C to stop the server. `python -m roadsense.api --port 8001` changes the
+port; `--forecast-as-of <ISO date>` pretends the weather forecast was fetched at that time, to show the STALE banner
+and provisional plan. Data was retrieved during the event and is cached in the repo, so no download is needed to run
+the app. Do not re-pull OpenStreetMap data: segment IDs would change.
+
+Tests: `python -m pytest -q` on main (17 Oct, Python 3.11.9, Windows 11): 130 passed. The warnings are pandas/NumPy and
+FastAPI deprecation notices and don't affect results.
 
 Full pipeline (`make all`, or run the `python -m` lines in the `Makefile` on Windows):
 ingest → features → synthetic → train → plan_risk → synthetic → lights → plan. Every tunable number is in
@@ -47,6 +71,13 @@ What this does and doesn't show:
   don't offer it as a cold-start fallback.
 - The 2026 checks are too small to judge either way. We report them anyway.
 - Counts measure FixMyStreet use, not true pothole rates, so scores rank segments within one city and year.
+
+### Limits of FixMyStreet data
+
+FixMyStreet is one of several ways residents report problems, so its reports are only part of the picture. mySociety,
+which runs it, warns against using the data to compare or rank areas. RoadSense therefore only ranks roads *within* a
+city and never compares councils. Report status relies on residents marking problems fixed, so many "open" reports
+are years old. The app only treats reports from the last 120 days as open.
 
 **Reproducible:** `python -m roadsense.models.real_risk` (fixed seed 2026) regenerates `reports/real_risk_eval.md`.
 A second team member re-ran it from a clean `main` on 17 Oct and got identical numbers.
@@ -85,7 +116,7 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 
 | Source | What we use it for | Coverage / dates | Licence and attribution |
 |---|---|---|---|
-| **FixMyStreet** (mySociety), Open311 API `fixmystreet.com/open311/v2/requests.json` | Pothole reports, used as training and test labels. Agencies: Southampton 2567, Portsmouth 2657, Brighton & Hove 2614 | Southampton train 2015–17, test 2018–19; Brighton train ≤2022, test 2023–25; Portsmouth extra training. Retrieved 17 Oct 2026, 11:00 UTC | Publicly published reports from mySociety's FixMyStreet. We found no explicit open-data licence, so we use them for non-commercial research only and keep only location, category, status and date. Credit: FixMyStreet / mySociety |
+| **FixMyStreet** (mySociety), Open311 API `fixmystreet.com/open311/v2/requests.json` | Pothole reports, used as training and test labels. Agencies: Southampton 2567, Portsmouth 2657, Brighton & Hove 2614 | Southampton train 2015–17, test 2018–19; Brighton train ≤2022, test 2023–25; Portsmouth extra training. Retrieved 17 Oct 2026, 11:00 UTC | Publicly published reports from mySociety's FixMyStreet. We found no explicit open-data licence, so we use them for non-commercial research only and keep only location, category, status and date. Credit: FixMyStreet / mySociety. [CONFIRM: ask organisers or mySociety] |
 | **OpenStreetMap** | Road network split into segments (22,334 across 3 cities), road class (`is_main_road`), cycle routes, schools and hospitals | Extract retrieved 17 Oct 2026, 12:03 UTC | © OpenStreetMap contributors, Open Database Licence (ODbL) 1.0. openstreetmap.org/copyright |
 | **DfT road traffic statistics** | Traffic load per segment (AADF incl. HGVs). 314 Southampton segments have a direct count; the rest use road-class medians, shown in the app as "modelled estimate" | Count year up to 2025, retrieved 17 Oct 2026, 12:22 UTC | Open Government Licence v3.0. Contains public sector information licensed under the OGL v3.0 |
 | **Environment Agency Flood Map for Planning: Flood Zone 3** | Flood exposure feature | Retrieved 17 Oct 2026, 12:45 UTC | Open Government Licence v3.0. © Environment Agency copyright and/or database right. Contains OS data © Crown copyright and database right |
@@ -105,6 +136,7 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
   git-ignored and has never been committed.
 - Report titles kept in the repo are redacted: house numbers become `[number]`, postcodes `[postcode]` and names
   `[name]` (`roadsense/prevent/redact_titles.py`; the ingest step redacts on every rebuild).
+- Titles are redacted before they are stored, displayed or sent to Gemini; report descriptions are not stored.
 - Only public FixMyStreet text and synthetic data are sent to Gemini. API keys live in `.env`, which is git-ignored.
 
 ## AI-generated code and AI in the product
@@ -114,7 +146,19 @@ data (lane A), models (lane B), product (lane C). Commits made through Claude Co
 line. Team members chose the approach, reviewed and ran the code, checked the data, and made the decisions recorded
 in `STATUS.md`, `DATA_GAPS.md` and `schemas.md`. Claude (chat) was also used for planning, code review and merging.
 
-In the product, the risk model is a LightGBM classifier we trained; Google Gemini is used only for report triage.
+What the team did:
+- Chose the problem and user (Southampton highways officers / Balfour Beatty Living Places) and defined the build plan
+  (milestones, lanes, merges) the agents worked from.
+- Chose and checked the data sources, including spotting that Southampton's FixMyStreet reports collapse after 2019.
+- Set the honesty rules: synthetic inputs are labelled in the app, train/test periods never overlap, and we don't claim
+  results the evaluation doesn't support.
+- Split the work into three lanes with a shared data contract, and reviewed and merged every branch, with tests run
+  before each merge.
+- Checked the evidence used in the pitch against primary sources.
+- Removed personal details from public report text before publishing.
+
+In the product, the risk model is a LightGBM classifier we trained; Google Gemini is used only for report triage: results are
+cached and shown with the method used (Gemini or keyword fallback), and an officer approves or rejects every work order.
 The 100 triage evaluation labels were drafted by Claude Code from report titles: TODO note who spot-checked them.
 
 ## What existed before the event
@@ -123,6 +167,14 @@ Nothing. All data was retrieved and all code written during the hackathon. The f
 Saturday 17 October 2026, after hacking opened on Friday 16 October at 20:00.
 (TODO after the history rewrite: the public repo's commit hashes differ from the working repo's; dates are unchanged.)
 
+## Team
+
+- Nilen Rao: data pipeline, merges
+- Aryan [SURNAME]: models
+- Armaan [SURNAME]: product (API, dashboard, triage)
+- [NAME]: pitch
+- [NAME]: pitch, video
+
 ## Who helped
 
-TODO: names and roles (lane A data, lane B models, lane C product, pitch and video), plus anyone else who helped.
+[Mentors / organisers / anyone else who gave advice, or "No outside help."]
