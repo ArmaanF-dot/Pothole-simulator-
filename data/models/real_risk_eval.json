@@ -1,0 +1,172 @@
+{
+ "cities": {
+  "Southampton": {
+   "model": {
+    "capture_top10_length": 0.3860741971207088,
+    "ci95": [
+     0.3098273970636483,
+     0.4531530646535435
+    ]
+   },
+   "physical_only": {
+    "capture_top10_length": 0.1994278331487634,
+    "ci95": [
+     0.1281797853047853,
+     0.26414867280470444
+    ]
+   },
+   "last_year_reports": {
+    "capture_top10_length": 0.3368401624215578,
+    "ci95": [
+     0.24465189447031047,
+     0.3888946917349617
+    ]
+   },
+   "load_x_past_reports": {
+    "capture_top10_length": 0.19781284606866,
+    "ci95": [
+     0.14513387893159102,
+     0.25192554620953717
+    ]
+   },
+   "_diff_model_minus_last_year": {
+    "point": 0.049234034699151,
+    "ci95": [
+     0.008912350380528232,
+     0.12057524818120864
+    ],
+    "share_model_ahead": 0.987
+   },
+   "_diff_model_minus_physical": {
+    "point": 0.1866463639719454,
+    "ci95": [
+     0.12357947382534319,
+     0.2539646103859981
+    ],
+    "share_model_ahead": 1.0
+   },
+   "_diff_physical_minus_last_year": {
+    "point": -0.1374123292727944,
+    "ci95": [
+     -0.20050736796127153,
+     -0.04137494663452642
+    ],
+    "share_model_ahead": 0.001
+   },
+   "_n": {
+    "reports": 381,
+    "segments": 8145,
+    "rows": 16290,
+    "years": [
+     2018,
+     2019
+    ],
+    "resamples": 1000,
+    "seed": 2026
+   }
+  }
+ },
+ "loco": {},
+ "frozen_2026": {
+  "Southampton": {
+   "model": {
+    "capture_top10_length": 0.12121212121212122,
+    "ci95": [
+     0.02631578947368421,
+     0.2413793103448276
+    ]
+   },
+   "physical_only": {
+    "capture_top10_length": 0.30303030303030304,
+    "ci95": [
+     0.14814814814814814,
+     0.48717948717948717
+    ]
+   },
+   "last_year_reports": {
+    "capture_top10_length": 0.12121212121212122,
+    "ci95": [
+     0.027777777777777776,
+     0.2692567567567567
+    ]
+   },
+   "load_x_past_reports": {
+    "capture_top10_length": 0.21212121212121213,
+    "ci95": [
+     0.08327702702702702,
+     0.4074074074074074
+    ]
+   },
+   "_diff_model_minus_last_year": {
+    "point": 0.0,
+    "ci95": [
+     -0.14285714285714285,
+     0.1071669884169884
+    ],
+    "share_model_ahead": 0.315
+   },
+   "_diff_model_minus_physical": {
+    "point": -0.18181818181818182,
+    "ci95": [
+     -0.36737379162191186,
+     0.0
+    ],
+    "share_model_ahead": 0.012
+   },
+   "_diff_physical_minus_last_year": {
+    "point": 0.18181818181818182,
+    "ci95": [
+     0.0,
+     0.36371212121212115
+    ],
+    "share_model_ahead": 0.962
+   },
+   "_n": {
+    "reports": 33,
+    "segments": 8145,
+    "rows": 8145,
+    "years": [
+     2026
+    ],
+    "resamples": 1000,
+    "seed": 2026
+   }
+  }
+ },
+ "importance": {
+  "Southampton": {
+   "groups": {
+    "past reports": 0.13560886354658386,
+    "traffic load": 0.05728493401788253,
+    "weather": 0.24982453916339575,
+    "road class and length": 0.47280842586531335,
+    "bus, junction, flood": 0.08447323740682458,
+    "city": 0.0
+   },
+   "past_reports_share": 0.13560886354658386,
+   "top_features": [
+    [
+     "length_m",
+     0.4278482718440605
+    ],
+    [
+     "wx_frost_hours",
+     0.10579781593866516
+    ],
+    [
+     "rep_nb_prev1",
+     0.06953779951539929
+    ],
+    [
+     "wx_freeze_thaw",
+     0.06509347782485354
+    ],
+    [
+     "wx_rain_30d_mean",
+     0.03892431791331857
+    ]
+   ],
+   "n_rows": 16290
+  }
+ }
+}
