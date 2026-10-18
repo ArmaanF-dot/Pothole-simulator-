@@ -5,7 +5,8 @@ It scores every council road segment on pothole risk from heavy-vehicle load, bu
 freeze-thaw weather and past pothole history, explains each score, and ranks a weekly prevention list with a
 treatment and its cost logic for an officer to approve. A "Worth treating" view shows the roads where planned
 treatment costs less than the reactive repairs it avoids, plus every road with a confirmed pothole. Gemini
-triages public FixMyStreet reports into draft work orders. A Brighton map shows the same model on 100% real inputs.
+triages public FixMyStreet reports into draft work orders. A Brighton view runs the same model on 100% real inputs
+and gives an inspection list.
 
 Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampton City track.
 
@@ -13,7 +14,13 @@ Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampt
 
 - **Prevention plan** (Southampton): road segments ranked by reactive repair cost avoided per £ of treatment, with a
   suggested treatment and the reasons behind each ranking. Split into *All roads* and *Worth treating* (treatment pays
-  for itself, or a confirmed pothole).
+  for itself, or a confirmed pothole). Clicking a row zooms the map to that road, outlines it and opens its card.
+- **Recently treated** (Southampton, display only): a plan row and its road card are flagged when the council lists
+  carriageway work on that road (completed or in progress) within 2 years before the plan week. Source: the council's
+  scheme lists (the live "Roadworks, closures and improvements" page for 2026, and archived copies of three removed
+  pages for 2023/24), matched to segments only when road name and ward are equal, plus hand-checked links in
+  `data/resurfacing_manual_matches.csv` (e.g. the Millbrook Flyover). The flag never changes urgency or ranking.
+  Data: `data/processed/soton_resurfacing.csv`, built by `python -m roadsense.ingest.soton_resurfacing`.
 - **Report triage** (Southampton): real FixMyStreet pothole reports are classified (Gemini, with a keyword fallback)
   and turned into work orders that an officer approves or rejects.
 - **Building sites and utility digs** (both cities): roads within 150 m of a building site (brownfield land registers
@@ -24,12 +31,14 @@ Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampt
   works). Roads dug up the year before had twice the report rate of similar-risk roads in Brighton 2023-25, but the model
   can only learn digs from Brighton 2022 (Street Manager starts in 2020).
 - **Streetlights** (Southampton, synthetic demo data).
-- **Brighton risk map**: the same risk model applied to Brighton & Hove, a city with plentiful real report data, as an
-  out-of-area check.
+- **Brighton inspection list** (100% real inputs): the same risk model applied to Brighton & Hove, a city with
+  plentiful real report data. Roads are coloured by urgency on Southampton's 0-100 bands, from P30 and consequence only
+  (no wear model, plan or £ for Brighton). The list puts roads with an open FixMyStreet report from the last 120 days
+  first, then the top 50 by urgency; Brighton's report triage is read-only.
 
 ## Quick start
 
-Tested on Python 3.14.7, Windows 11.
+Tested on Python 3.11.9, Windows 11.
 
 ```bash
 git clone [PUBLIC REPO URL]
@@ -48,7 +57,9 @@ port; `--forecast-as-of <ISO date>` pretends the weather forecast was fetched at
 and provisional plan. Data was retrieved during the event and is cached in the repo, so no download is needed to run
 the app. Do not re-pull OpenStreetMap data: segment IDs would change.
 
-Tests: `python -m pytest -q` on main (17 Oct, Python 3.11.9, Windows 11): 130 passed. The warnings are pandas/NumPy and
+Tests: `python -m pytest -q` on main e979ebe (18 Oct, Python 3.11.9, Windows 11): 162 passed, 1 failed
+(`tests/test_refresh.py::test_app_reads_live_build_when_present` uses a fixed clock of 18 Oct 06:00 UTC, so it
+fails when run more than about 4 hours later; the app itself is unaffected). The warnings are pandas/NumPy and
 FastAPI deprecation notices and don't affect results.
 
 Full pipeline (`make all`, or run the `python -m` lines in the `Makefile` on Windows):
@@ -158,7 +169,7 @@ A second team member re-ran it from a clean `main` on 17 Oct and got identical n
 Other evaluations: weekly weather model on synthetic labels (pipeline check only, `reports/risk_eval.md`);
 streetlights (`reports/lights_eval.md`: ranks no better than install year, its value is the replacement date);
 report triage against keyword rules (`reports/triage_vs_keywords.md`; keyword rules 91/100 on hand-labelled real
-reports, Gemini comparison TODO); running cost (`reports/cost.md`: measured tokens at the published Gemini price, about £0.0006 per triaged report;
+reports; Gemini has not been scored on this set); running cost (`reports/cost.md`: measured tokens at the published Gemini price, about £0.0006 per triaged report;
 under £3 a year even at Southampton's full yearly repair volume of about 3,100 to 4,200 repairs, an upper bound because
 these are repairs, not reports).
 
@@ -180,9 +191,10 @@ Everything public is real. The only synthetic parts are records the council alre
 | Brighton map | real-label model with real FixMyStreet history | Real (`uses_synthetic = false`); yearly scale assumed (`scale_source`) |
 | Building sites near a road | brownfield land registers (planning.data.gov.uk) and OpenStreetMap `landuse=construction` | Real; model input (registers) and map/card flags |
 | Utility and highway digs on a road | DfT Street Manager open data, completed works, mid-2020 on | Real; model input and card flags |
+| Recent council resurfacing ("Recently treated" flag) | Southampton City Council scheme lists | Real; display only, not a model input. 2026 from the live page, 2023/24 from Wayback Machine copies of removed pages |
 
 Every synthetic row carries `is_synthetic = true` and a `source = "synthetic:<generator>@<version>"` tag, and every
-screen that uses one shows a **SYNTHETIC** badge. The dashboard header reads "trained on real reports · history
+screen that uses one shows a **SYNTHETIC** badge. The plan heading reads "trained on real reports · history
 synthetic". Confirmations from simulated crew feedback are labelled "Simulated crew report" and left out of the
 confirmed-pothole count. In deployment the synthetic parts are replaced by the council's own repair log, inspection
 records and asset register. All assumptions and gaps are listed in `DATA_GAPS.md`.
@@ -197,12 +209,13 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 | **OpenStreetMap** | Road network split into segments (22,334 across 3 cities), road class (`is_main_road`), cycle routes, schools and hospitals | Extract retrieved 17 Oct 2026, 12:03 UTC | © OpenStreetMap contributors, Open Database Licence (ODbL) 1.0. openstreetmap.org/copyright |
 | **DfT road traffic statistics** | Traffic load per segment (AADF incl. HGVs). 314 Southampton segments have a direct count; the rest use road-class medians, shown in the app as "modelled estimate" | Count year up to 2025, retrieved 17 Oct 2026, 12:22 UTC | Open Government Licence v3.0. Contains public sector information licensed under the OGL v3.0 |
 | **Environment Agency Flood Map for Planning: Flood Zone 3** | Flood exposure feature | Retrieved 17 Oct 2026, 12:45 UTC | Open Government Licence v3.0. © Environment Agency copyright and/or database right. Contains OS data © Crown copyright and database right |
-| **Open-Meteo** | Historical weekly weather (rain, freeze–thaw) and 3-week forecast | Historical: TODO check range in `data/processed/sources.json`; forecast retrieved 17 Oct 2026, 12:36 UTC | Data CC BY 4.0. Weather data by Open-Meteo.com. Free API used for non-commercial purposes |
+| **Open-Meteo** | Historical weekly weather (rain, freeze–thaw) and 3-week forecast | Historical: weekly from Dec 2014 (`data/processed/weather_weekly.parquet`); forecast retrieved 17 Oct 2026, 12:36 UTC, then daily by the refresh | Data CC BY 4.0. Weather data by Open-Meteo.com. Free API used for non-commercial purposes |
 | **MapIt** (mySociety) | Ward boundaries, Southampton and Brighton | Retrieved 17 Oct 2026, 12:06 UTC | Boundaries derived from OS Boundary-Line, OGL v3.0. Contains OS data © Crown copyright and database right |
 | **ONS ward boundaries** | Ward boundaries, Portsmouth (MapIt free quota ran out mid-hackathon) | December 2024 ward boundaries, retrieved 17 Oct 2026, 15:05 UTC | Source: Office for National Statistics, licensed under OGL v3.0. Contains OS data © Crown copyright and database right |
 | **DfT Street Manager open data** (permit archive, `opendata.manage-roadworks.service.gov.uk`) | Completed utility and highway works on each road (`roadsense.ingest.streetworks`) | July 2020 onwards, monthly; read Oct 2026, nothing raw kept | Open Government Licence v3.0 |
 | **Brownfield land registers** via planning.data.gov.uk | Housing and development sites with permission dates near each road (`roadsense.ingest.construction`) | Brighton 253 sites; Southampton 37 (last updated 2017). Retrieved 18 Oct 2026 | Open Government Licence v3.0 |
 | **OpenStreetMap** `landuse=construction` (Overpass API) | Building sites active now, both cities | Retrieved 18 Oct 2026 | © OpenStreetMap contributors, ODbL 1.0 |
+| **Southampton City Council** scheme lists: "Roadworks, closures and improvements" (live) and, via the Wayback Machine, the removed DfT quarterly report (July 2024), Network North and "45 additional roads" pages | Recently-treated flag only (`roadsense.ingest.soton_resurfacing`) | 2026 schemes read 17 Oct 2026; archived copies dated Apr 2024 to May 2025. Every row keeps its source and archive link | Council web pages; licence not yet checked. Credit: Southampton City Council |
 | **Google Gemini API** | Report triage (classification, draft work orders) | Model fallback list `gemini-3.8-flash` → `gemini-3-flash-preview` → `gemini-flash-latest` | Gemini API terms. Only public FixMyStreet text and synthetic data are sent |
 
 ### Figures quoted in the pitch (not model inputs)
