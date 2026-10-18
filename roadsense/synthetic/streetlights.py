@@ -7,13 +7,12 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 
-from roadsense.synthetic.common import label_synthetic, to_lonlat, to_xy
+from roadsense.synthetic.common import label_synthetic, to_xy
 
 GEN_LAMPS = "streetlights"
 GEN_FAULTS = "light_faults"

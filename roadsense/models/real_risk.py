@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from roadsense.synthetic.common import ROOT, load_config, neighbours, resolve, to_xy
+from roadsense.synthetic.common import ROOT, load_config, neighbours, resolve
 
 MODEL_VERSION = "real-risk-v0.1"
 HIGHWAY_CODE = {"primary": 3, "primary_link": 3, "trunk": 4, "trunk_link": 4, "secondary": 2, "secondary_link": 2,

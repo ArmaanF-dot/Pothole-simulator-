@@ -10,7 +10,7 @@ import os
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import pandas as pd
 

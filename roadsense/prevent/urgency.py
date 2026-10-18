@@ -9,8 +9,6 @@ import numpy as np
 import pandas as pd
 
 BAND_ORDER = ["critical", "high", "prevention", "monitor"]
-BAND_LABEL = {"critical": "Critical (dispatch)", "high": "High (inspect)",
-              "prevention": "Prevention window (treat before failure)", "monitor": "Monitor"}
 
 
 def _flag(seg: pd.DataFrame, col: str) -> pd.Series:

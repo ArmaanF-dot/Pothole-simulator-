@@ -64,7 +64,6 @@ def _treatments_2y(res: pd.DataFrame, seg_ids, W: pd.DatetimeIndex) -> np.ndarra
 def build_table(seg: pd.DataFrame, wx: pd.DataFrame, res: pd.DataFrame, potholes: pd.DataFrame, cfg: dict,
                 start: str | None = None, end: str | None = None, with_labels: bool = True) -> pd.DataFrame:
     """Segment-week rows for week starts in [start, end)."""
-    rcfg = cfg["risk"]
     start = start or str((pd.Timestamp(cfg["potholes"]["start"]) + pd.Timedelta(days=365)).date())
     end = end or cfg["as_of"]
     W = weeks(start, end)
