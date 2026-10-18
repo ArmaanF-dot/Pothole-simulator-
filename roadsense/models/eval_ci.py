@@ -45,6 +45,11 @@ PLAIN = {
     "wx_rain_then_frost": "Rain followed by frost in the area last year",
     "wx_hot_days": "Hot days in the area last year",
     "city_code": "Which city (reporting habits differ between cities)",
+    "con_sites_3y": "Building sites within 150 m with permission in the last 3 years",
+    "con_dwellings_3y": "New homes permitted within 150 m in the last 3 years",
+    "uw_carriageway_1y": "Times the road was dug up last year (Street Manager)",
+    "uw_any_1y": "Utility or highway works on the road last year",
+    "uw_carriageway_2y": "Times the road was dug up in the last 2 years",
 }
 
 

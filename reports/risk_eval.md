@@ -229,7 +229,7 @@ Southampton, frozen 2026 check (Jan to Oct): model 21% (8%-36%) vs last-year bas
 <!-- eval-ci:start -->
 ## Held-out ranges by ward, 2026 check and top features per city
 
-_Generated 2026-10-18T05:13:21+00:00 by `python -m roadsense.models.eval_ci`._
+_Generated 2026-10-18T05:52:35+00:00 by `python -m roadsense.models.eval_ci`._
 
 Metric: share of a test year's FixMyStreet reports that fall on the top 10% of road length, averaged over the test years. Baseline: rank by last year's reports. Ranges: paired cluster bootstrap over **wards** (1,000 resamples, seed 2026); reports cluster in space, so whole wards are resampled rather than single roads or weeks, which would understate the noise.
 
@@ -258,7 +258,7 @@ Metric: share of a test year's FixMyStreet reports that fall on the top 10% of r
 2. How wet the area was last year (`wx_rain_30d_mean`, 15% of the attribution)
 3. Which city (reporting habits differ between cities) (`city_code`, 14% of the attribution)
 4. Potholes reported on the neighbouring roads last year (`rep_nb_prev1`, 7% of the attribution)
-5. con_dwellings_3y (`con_dwellings_3y`, 7% of the attribution)
+5. New homes permitted within 150 m in the last 3 years (`con_dwellings_3y`, 7% of the attribution)
 
 **Brighton**
 
