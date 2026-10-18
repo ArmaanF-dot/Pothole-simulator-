@@ -68,7 +68,7 @@ async function loadPlan() {
 const treatedTag = (t, long) => !t ? "" : `<div class="small"><span class="vb treated" title="${esc(t.work + ": " + t.scheme + " (" + t.source + (t.match === "manual" ? ", manual match" : "") + ")")}">${esc(t.label)}</span>${long ? ` ${esc(t.work)}. Check before treating again.` : ""}</div>`;
 
 // building sites near the road and utility digs on it (brownfield registers, OpenStreetMap, DfT Street Manager).
-// Display only unless the held-out check (reports/context_eval.md) found a gain: see ctxNote.
+// Both feed the risk model (earlier years' sites and digs); ctxNote says what the held-out check found.
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const ctxTags = (c) => {
   if (!c) return "";
@@ -80,8 +80,9 @@ const ctxTags = (c) => {
 };
 const ctxNote = (k) => {
   const v = state.ctxVerdict[k];
-  if (!v) return "Not tested on held-out years yet: context only, not used in ranking.";
-  return v.used_in_ranking ? "Helped on held-out years: used in ranking." : "No clear gain on held-out years: context only, not used in ranking.";
+  if (!v) return "";
+  if (!v.used_in_ranking) return "Context only: not an input to the risk model.";
+  return v.clear_gain ? "Used in the risk model; clear gain on held-out years." : "Used in the risk model; on held-out years it has not improved the ranking.";
 };
 function ctxRows(c) {
   if (!c) return "";

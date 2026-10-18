@@ -297,7 +297,7 @@ class Service:
 
     def works_context(self, city: str | None = None) -> dict:
         """{segment_id: {construction, works}} from the brownfield registers and Street Manager, cached per city.
-        Display only unless reports/context_eval.md says a feature set helps on held-out years (context_verdict)."""
+        The model uses earlier years' sites and digs (real_risk.CONTEXT); these flags show what is near the road now."""
         city = city or self.cfg["coverage"]["city"]
         if not hasattr(self, "_works_ctx"):
             self._works_ctx = {}
@@ -315,11 +315,14 @@ class Service:
         if not p.exists():
             return {}
         r = json.loads(p.read_text(encoding="utf-8"))
+        mp = Path(self.root) / "data" / "models" / "real_risk_model.json"
+        feats = set(json.loads(mp.read_text(encoding="utf-8")).get("features", [])) if mp.exists() else set()
         out = {}
         for k, v in r.get("sets", {}).items():
             cities = {c: {kk: x.get(kk) for kk in ["base", "with", "diff", "ci95", "reports", "years"]} if "ci95" in x
                       else {"status": x.get("status")} for c, x in v.get("cities", {}).items()}
-            out[k] = {"used_in_ranking": v.get("used_in_ranking", False), "verdict": v.get("verdict"), "cities": cities}
+            out[k] = {"used_in_ranking": bool(set(v.get("features", [])) & feats), "clear_gain": v.get("clear_gain", False),
+                      "verdict": v.get("verdict"), "cities": cities}
         return out
 
     def prevention_scenario(self) -> dict:

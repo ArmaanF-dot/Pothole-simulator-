@@ -80,6 +80,12 @@ REASONS = {
     "rep_nb_prev1": lambda r: "potholes on neighbouring segments last year (synthetic council log, scaled)",
     "rep_prev1_per_km": lambda r: "high pothole density last year (synthetic council log, scaled)",
     "city_code": lambda r: "city",
+    "con_sites_3y": lambda r: (f"{r['con_sites_3y']:.0f} building sites" if r["con_sites_3y"] > 1 else "building site")
+                              + " within 150 m (permission in the last 3 years)",
+    "con_dwellings_3y": lambda r: f"{r['con_dwellings_3y']:.0f} new homes permitted within 150 m",
+    "uw_carriageway_1y": lambda r: f"road dug up {r['uw_carriageway_1y']:.0f}x last year (Street Manager)",
+    "uw_any_1y": lambda r: f"{r['uw_any_1y']:.0f} utility or highway digs here last year (Street Manager)",
+    "uw_carriageway_2y": lambda r: f"road dug up {r['uw_carriageway_2y']:.0f}x in the last 2 years (Street Manager)",
 }
 def _n_reports(x: float, noun: str) -> str:
     n = int(round(x))
@@ -98,7 +104,8 @@ REAL_HISTORY_REASONS = {
 NEVER_A_REASON = {"city_code", "wx_rain_30d_mean", "wx_freeze_thaw", "wx_frost_hours", "wx_rain_then_frost", "wx_hot_days"}
 NOT_A_REASON_WHEN_ZERO = {"bus_routes", "bus_stop", "junction", "in_flood_area", "is_main_road", "rep_prev1",
                           "rep_prev2_3", "rep_nb_prev1", "rep_prev1_per_km", "wx_freeze_thaw", "wx_frost_hours",
-                          "wx_rain_then_frost", "wx_hot_days"}
+                          "wx_rain_then_frost", "wx_hot_days", "con_sites_3y", "con_dwellings_3y", "uw_carriageway_1y",
+                          "uw_any_1y", "uw_carriageway_2y"}
 
 
 def reasons_from_contrib(model, X: pd.DataFrame, k: int = 3, history: str = "synthetic") -> list[list[str]]:
@@ -218,7 +225,7 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True,
     labels = inp["labels"] if inp.get("labels") is not None else rr.labels_from_reports(inp["reports"], seg_all, cfg_a, radius)
 
     # 1. real-label model on every usable real row (all cities, train + test years)
-    table = rr.build_table(seg_all, labels, wx=inp.get("wx"))
+    table = rr.build_table(seg_all, labels, wx=inp.get("wx"), context=inp.get("context"))
     usable = table[table["rep_prev1"].notna() & table["split"].isin(["train", "test"])]
     model = rr.fit(usable, cfg)
     cats = list(table["city_code"].cat.categories)
@@ -231,7 +238,7 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True,
         seg = seg[seg["owner"] != "national_highways"].reset_index(drop=True)
     fms = labels[(labels["city"] == city) & labels["split"].isin(["train", "test"])]["n_reports"].values
     hist = synthetic_history_labels(seg, potholes, fms, as_of.year, city)
-    st = rr.build_table(seg, hist, wx=inp.get("wx"))
+    st = rr.build_table(seg, hist, wx=inp.get("wx"), context=inp.get("context"))
     st = st[st["year"] == as_of.year].reset_index(drop=True)
     st["city_code"] = pd.Categorical(st["city"], categories=cats)
     X = st[model.feature_names_used_]

@@ -10,11 +10,14 @@ only, the agreed train/test years per city) with the features from roadsense.fea
   utility_works uw_carriageway_1y, uw_any_1y, uw_carriageway_2y: completed Street Manager works on the segment in the
                 year (two years) before; only from 2022 rows on (first full archive year is 2021)
 
-For each feature set the full model is refitted with and without it on the same training rows and both are scored
+For each feature set the model without CONTEXT (real_risk.FEATURES_NO_CONTEXT) is refitted with and without it on the
+same training rows and both are scored
 on each city's test years with real_risk's measure (share of the year's reports on the top 10% of road length),
 with a paired segment bootstrap of the difference. The rule used by the product: a feature set is "used in ranking"
 only if the difference's 95% interval is above 0 in at least one city and below 0 in none; otherwise it is shown on
 the page as context and does not move the ranking.
+
+Both sets are in the ranking model (team decision, 18 Oct); this check reports whether that helps on held-out years.
 
 A second, simpler check is printed alongside: the report rate on flagged vs unflagged test segments within the same
 model-risk decile (pooled over deciles, Mantel-Haenszel style), so a flag that carries information the model already
@@ -37,7 +40,7 @@ from roadsense.synthetic.common import ROOT, load_config, resolve
 
 SETS = {"construction": ["con_sites_3y", "con_dwellings_3y"],
         "utility_works": ["uw_carriageway_1y", "uw_any_1y", "uw_carriageway_2y"]}
-FLAG = {"construction": "con_sites_3y", "utility_works": "uw_carriageway_1y"}
+FLAG = {"construction": "con_sites_3y", "utility_works": "uw_carriageway_1y", "both": "con_sites_3y"}
 BOOT_N, BOOT_SEED = 1000, 2026
 
 
@@ -92,16 +95,14 @@ def run(root: Path | None = None, verbose: bool = True) -> dict:
     seg = inp["seg"]
     labels = inp["labels"] if inp.get("labels") is not None else R.labels_from_reports(
         inp["reports"], seg, cfg_a, cfg_a.get("labels", {}).get("snap_m", 25))
-    table = R.build_table(seg, labels, wx=inp.get("wx"))
-    sites, links, works = WC.load_linked(str(root))
-    extra = WC.yearly(table, sites, links, works)
-    table = pd.concat([table.reset_index(drop=True), extra[WC.YEARLY].reset_index(drop=True)], axis=1)
+    table = R.build_table(seg, labels, wx=inp.get("wx"), context=WC.load_linked(str(root)))
     usable = table[table["rep_prev1"].notna()]
     train = usable[usable["split"] == "train"]
-    base = R.fit(train, cfg)
+    base = R.fit(train, cfg, R.FEATURES_NO_CONTEXT)
     res = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "sets": {}}
-    for name, feats in SETS.items():
-        ext = R.fit(train, cfg, R.FEATURES + feats)
+    sets = dict(SETS, both=SETS["construction"] + SETS["utility_works"])
+    for name, feats in sets.items():
+        ext = R.fit(train, cfg, R.PHYSICAL + R.HISTORY + feats + ["city_code"])  # same column order as R.FEATURES
         res["sets"][name] = {"features": feats, "train_rows_with_values": int(train[feats[0]].notna().sum()),
                              "cities": {}}
         for city in sorted(usable["city"].unique()):
@@ -118,9 +119,10 @@ def run(root: Path | None = None, verbose: bool = True) -> dict:
             res["sets"][name]["cities"][city] = r
         cs = [c for c in res["sets"][name]["cities"].values() if "ci95" in c]
         helps = any(c["ci95"][0] > 0 for c in cs) and not any(c["ci95"][1] < 0 for c in cs)
-        res["sets"][name]["used_in_ranking"] = bool(helps)
-        res["sets"][name]["verdict"] = ("helps on held-out years: used in ranking" if helps else
-                                        "no clear held-out gain: shown as context only, not used in ranking")
+        res["sets"][name]["clear_gain"] = bool(helps)
+        res["sets"][name]["used_in_ranking"] = True      # team decision 18 Oct: both feature sets are in the model
+        res["sets"][name]["verdict"] = ("in the model; clear held-out gain" if helps else
+                                        "in the model (team decision); no clear held-out gain yet")
     md = resolve(cfg, "models_dir", root)
     md.mkdir(parents=True, exist_ok=True)
     (md / "context_eval.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
@@ -145,8 +147,9 @@ def report(res: dict) -> str:
          "Score: share of the year's reports on the top 10% of road length, model with vs without the features, same "
          f"training rows, paired segment bootstrap ({BOOT_N:,} resamples, seed {BOOT_SEED}). FixMyStreet counts measure "
          "reporting, not true pothole rates.", "",
-         "Rule: a feature set moves the ranking only if the gain's 95% interval is above 0 in at least one city and "
-         "below 0 in none. Otherwise it is shown on the officer page as context only.", ""]
+         "Both feature sets are in the ranking model (roadsense.models.real_risk FEATURES) at the team's request "
+         "(18 Oct). A gain is called clear when its 95% interval is above 0 in at least one city and below 0 in none; "
+         "until then the page says the gain is not yet clear.", ""]
     for name, s in res["sets"].items():
         L += [f"## {name.replace('_', ' ').capitalize()}: {s['verdict']}", "",
               f"Features: {', '.join(s['features'])}. Training rows with a value: {s['train_rows_with_values']:,}.", "",

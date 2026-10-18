@@ -22,8 +22,10 @@ Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampt
 - **Building sites and utility digs** (both cities): roads within 150 m of a building site (brownfield land registers
   and OpenStreetMap construction sites) and roads dug up by utility companies or the council in the last 12 months
   (DfT Street Manager) are flagged on the plan, the inspection list and the road card, and building sites are on the
-  map. A held-out check (`reports/context_eval.md`) found no clear gain in ranking from either, so they are shown as
-  context and do not move the ranking.
+  map. Both are also inputs to the risk model (earlier years' sites and digs, team decision 18 Oct). The held-out check
+  (`reports/context_eval.md`) finds no gain from them: +0.6 points in Brighton, −4.5 in Southampton (see How well it
+  works). Roads dug up the year before had twice the report rate of similar-risk roads in Brighton 2023-25, but the model
+  can only learn digs from Brighton 2022 (Street Manager starts in 2020).
 - **Streetlights** (Southampton, synthetic demo data).
 - **Brighton risk map**: the same risk model applied to Brighton & Hove, a city with plentiful real report data, as an
   out-of-area check.
@@ -116,15 +118,21 @@ against simply re-using last year's reports. Ranges are 95% paired segment boots
 
 | Test | Model | Last year's reports | Difference | Model ahead in |
 |---|---|---|---|---|
-| **Brighton 2023–25** (802 reports) | 31.2% (27.2–34.8) | 21.7% (18.6–26.4) | +9.5 (+4.9 to +12.2) | 100% |
-| **Southampton 2018–19** (381 reports, 262 on non-main roads) | 41.6% (33.9–47.9) | 33.7% (24.5–38.9) | +7.9 (+3.1 to +15.5) | 100% |
-| Leave-one-city-out: Southampton | 36.6% | 33.5% | +3.1 (+0.9 to +8.1) | 99% |
-| Leave-one-city-out: Brighton | 18.4% | 16.5% | +1.9 (−3.0 to +6.0) | 76% |
-| Leave-one-city-out: Portsmouth | 19.2% | 13.1% | +6.2 (−3.8 to +12.7) | 84% |
-| Frozen 2026 check, Southampton (33 reports) | 15.2% | 12.1% | +3.0 (−12.1 to +14.8) | 52% |
+| **Brighton 2023–25** (802 reports) | 31.8% (27.9–35.6) | 21.7% (18.6–26.4) | +10.1 (+5.6 to +12.9) | 100% |
+| **Southampton 2018–19** (381 reports, 262 on non-main roads) | 37.1% (29.7–43.9) | 33.7% (24.5–38.9) | +3.4 (−1.0 to +11.5) | 94% |
+| Leave-one-city-out: Southampton | 34.8% | 33.5% | +1.3 (−0.9 to +6.0) | 94% |
+| Leave-one-city-out: Brighton | 19.5% | 16.5% | +3.0 (−2.1 to +7.7) | 89% |
+| Leave-one-city-out: Portsmouth | 19.9% | 13.1% | +6.8 (−3.6 to +13.8) | 87% |
+| Frozen 2026 check, Southampton (33 reports) | 21.2% | 12.1% | +9.1 (−7.4 to +24.0) | 78% |
+
+Model = the model with building sites and utility digs as inputs (since 18 Oct). Before they were added it scored
+Brighton 31.2% and Southampton 41.6% (+7.9, +3.1 to +15.5) on the same test years; the paired difference for adding
+them is +0.6 (−2.2 to +3.7) in Brighton and −4.5 (−7.4 to −1.1) in Southampton (`reports/context_eval.md`).
+Set `risk.context_features: false` in `config/synthetic.yaml` and re-run `make train plan_risk plan` to go back.
 
 What this does and doesn't show:
-- With a city's own history, the model beats last year's reports in both cities tested.
+- With a city's own history, the model beats last year's reports clearly in Brighton; in Southampton it is ahead in
+  94% of resamples but the interval now includes 0 (it excluded 0 before building sites and digs were added).
 - In a city it has never seen, it is only roughly level with last year's reports: it needs local history.
 - Without past-report features (physical inputs only) it is no better than chance in Southampton (10.4%), so we
   don't offer it as a cold-start fallback.
@@ -167,8 +175,8 @@ Everything public is real. The only synthetic parts are records the council alre
 | Road wear, resurfacing history, streetlight register and faults, crew outcomes | `data/synthetic/` (seed 2026) | **SYNTHETIC** |
 | Treatment £/m² | our assumptions | Assumption, labelled in the app |
 | Brighton map | real-label model with real FixMyStreet history | Real (`uses_synthetic = false`); yearly scale assumed (`scale_source`) |
-| Building sites near a road | brownfield land registers (planning.data.gov.uk) and OpenStreetMap `landuse=construction` | Real; context only (no held-out gain) |
-| Utility and highway digs on a road | DfT Street Manager open data, completed works, mid-2020 on | Real; context only (no held-out gain) |
+| Building sites near a road | brownfield land registers (planning.data.gov.uk) and OpenStreetMap `landuse=construction` | Real; model input (registers) and map/card flags |
+| Utility and highway digs on a road | DfT Street Manager open data, completed works, mid-2020 on | Real; model input and card flags |
 | Without vs with prevention scenario | risk model's expected potholes x assumed treatment effects | **MODELLED**, uses SYNTHETIC wear; assumptions listed on the page |
 
 Every synthetic row carries `is_synthetic = true` and a `source = "synthetic:<generator>@<version>"` tag, and every
