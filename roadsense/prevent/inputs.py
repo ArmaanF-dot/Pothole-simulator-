@@ -1,7 +1,6 @@
 """Lane C inputs: config, and loaders for the other lanes' outputs with labelled fallbacks.
 
-Segments: lane A's data/processed/ (after the merge), then lane C's copy of lane A's real
-Southampton files in roadsense/prevent/mock_data/ (optional, removed after Merge 1), then lane B's mock, then a small lane C mock.
+Segments: lane A's data/processed/, then lane B's mock, then a small lane C mock.
 Risk and lights: lane B's outputs when their segment ids match the segments in use, otherwise a
 labelled mock in the contract's columns (docs/contract_outputs.md sections 7-8) on those segments.
 Every frame carries where it came from so the API and page can show SYNTHETIC, MOCK and
@@ -77,8 +76,7 @@ def latest(folder: Path, prefix: str) -> Path | None:
 
 # --- segments ---------------------------------------------------------------------------------
 def load_segments(cfg: dict, root: Path | None = None) -> tuple[pd.DataFrame, dict]:
-    for d, kind in [(resolve(cfg, "processed_dir", root), "real"), (resolve(cfg, "lane_c_copy_dir", root), "real"),
-                    (resolve(cfg, "lane_b_mock_dir", root), "mock")]:
+    for d, kind in [(resolve(cfg, "processed_dir", root), "real"), (resolve(cfg, "lane_b_mock_dir", root), "mock")]:
         p = d / "segments.parquet"
         if not p.exists():
             continue
@@ -113,7 +111,7 @@ def load_segments(cfg: dict, root: Path | None = None) -> tuple[pd.DataFrame, di
 def _segment_defaults(seg: pd.DataFrame) -> pd.DataFrame:
     seg = seg.reset_index(drop=True).copy()
     if "lat" not in seg or "lon" not in seg:
-        mids = seg["geometry"].map(_midpoint)
+        mids = [tuple(np.array(c).mean(0)) if c else (np.nan, np.nan) for c in coords_many(seg["geometry"])]
         seg["lon"], seg["lat"] = [m[0] for m in mids], [m[1] for m in mids]
     for c, v in [("owner", "council"), ("bus_stop", False), ("junction", False), ("in_flood_area", False),
                  ("esal_day", np.nan), ("ward", None), ("ref", ""), ("bus_routes", 0), ("name", "")]:
@@ -147,7 +145,7 @@ def display_names(seg: pd.DataFrame, max_hops: int = 6) -> pd.Series:
     todo = seg.index[(base == "") & is_link]
     if len(todo) == 0:
         return out
-    coords = seg["geometry"].map(_coords)
+    coords = dict(zip(seg.index, coords_many(seg["geometry"])))
     ends = {i: [tuple(np.round(c[0], 6)), tuple(np.round(c[-1], 6))] if c else [] for i, c in coords.items()}
     node_segs: dict = {}
     for i, e in ends.items():
@@ -198,11 +196,42 @@ def _coords(geom) -> list[tuple[float, float]]:
     return [tuple(map(float, p.split()[:2])) for p in inner.split(",") if p.strip()]
 
 
-def _midpoint(geom) -> tuple[float, float]:
-    c = _coords(geom)
-    if not c:
-        return (np.nan, np.nan)
-    return tuple(np.array(c).mean(0))
+def _coords_arrays(geoms) -> tuple[np.ndarray, np.ndarray]:
+    """_coords for many geometries at once: (xy (N, 2), index of the geometry each row belongs to).
+    WKB is parsed in one vectorised shapely call; WKT strings and anything unreadable go through _coords."""
+    geoms = list(geoms)
+    parts: list[tuple[np.ndarray, np.ndarray]] = []
+    rest = []
+    wkb_i = [i for i, g in enumerate(geoms) if g is not None and not isinstance(g, str)]
+    try:
+        import shapely
+        arr = shapely.from_wkb([bytes(geoms[i]) for i in wkb_i])
+        # .coords (what _coords reads) exists only on points and lines; other types give no coordinates
+        arr[~np.isin(shapely.get_type_id(arr), [0, 1, 2])] = None
+        xy, k = shapely.get_coordinates(arr, return_index=True)
+        parts.append((xy, np.asarray(wkb_i, int)[k] if len(k) else np.empty(0, int)))
+    except Exception:
+        rest += wkb_i
+    rest += [i for i, g in enumerate(geoms) if isinstance(g, str)]
+    for i in rest:
+        c = _coords(geoms[i])
+        if c:
+            parts.append((np.asarray(c, float), np.full(len(c), i)))
+    if not parts:
+        return np.empty((0, 2)), np.empty(0, int)
+    xy = np.concatenate([p[0] for p in parts])
+    idx = np.concatenate([p[1] for p in parts])
+    o = np.argsort(idx, kind="stable")
+    return xy[o], idx[o]
+
+
+def coords_many(geoms) -> list[list[tuple[float, float]]]:
+    """[_coords(g) for g in geoms], parsed in one batch."""
+    geoms = list(geoms)
+    xy, idx = _coords_arrays(geoms)
+    bounds = np.searchsorted(idx, np.arange(len(geoms) + 1))
+    pts = list(map(tuple, xy.tolist()))
+    return [pts[bounds[i]:bounds[i + 1]] for i in range(len(geoms))]
 
 
 # --- risk and lights --------------------------------------------------------------------------
@@ -260,11 +289,8 @@ def _overlap(ids: pd.Series, seg: pd.DataFrame | None) -> float:
 def load_risk(cfg: dict, root: Path | None = None, seg: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict]:
     """Lane B's risk file when its segment ids match `seg`; otherwise a labelled mock on `seg`
     (lane B still runs on mock segments until lane A's files are merged)."""
-    p = None
-    for d in [resolve(cfg, "outputs_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
-        p = latest(d, "risk")
-        if p is None:
-            continue
+    p = latest(resolve(cfg, "outputs_dir", root), "risk")
+    if p is not None:
         r = normalise_risk(pd.read_parquet(p))
         if _overlap(r["segment_id"], seg) >= 0.5:
             kind = "mock" if bool(r["inputs_mock"].any()) else "synthetic"
@@ -297,11 +323,8 @@ def normalise_lights(l: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_lights(cfg: dict, root: Path | None = None, seg: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict]:
-    p = None
-    for d in [resolve(cfg, "outputs_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
-        p = latest(d, "lights")
-        if p is None:
-            continue
+    p = latest(resolve(cfg, "outputs_dir", root), "lights")
+    if p is not None:
         l = normalise_lights(pd.read_parquet(p))
         if _overlap(l["segment_id"], seg) >= 0.5:
             return l, {"name": "lights", "path": _rel(p, root), "kind": "synthetic", "retrieved_at": _mtime(p),
@@ -315,9 +338,7 @@ def load_forecast_meta(cfg: dict, root: Path | None = None) -> dict:
     """When the weather forecast was retrieved. Lane A writes weather_forecast_weekly.parquet with
     a retrieved_at column; until then the risk file's weeks 1-3 are climatology (no forecast)."""
     for p in [resolve(cfg, "processed_dir", root) / "weather_forecast_weekly.parquet",
-              resolve(cfg, "processed_dir", root) / "weather_weekly.parquet",
-              resolve(cfg, "lane_c_copy_dir", root) / "weather_forecast_weekly.parquet",
-              resolve(cfg, "lane_c_copy_dir", root) / "weather_weekly.parquet"]:
+              resolve(cfg, "processed_dir", root) / "weather_weekly.parquet"]:
         if not p.exists():
             continue
         w = pd.read_parquet(p)
@@ -350,17 +371,13 @@ def load_fms(cfg: dict, root: Path | None = None, city: str = "Southampton", all
 
 
 def synthetic_meta(cfg: dict, root: Path | None = None) -> dict | None:
-    for d in [resolve(cfg, "synthetic_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
-        if (d / "_meta.json").exists():
-            return json.loads((d / "_meta.json").read_text(encoding="utf-8"))
-    return None
+    p = resolve(cfg, "synthetic_dir", root) / "_meta.json"
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
 def crew_outcomes_path(cfg: dict, root: Path | None = None) -> Path | None:
-    for d in [resolve(cfg, "synthetic_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
-        if (d / "crew_outcomes.csv").exists():
-            return d / "crew_outcomes.csv"
-    return None
+    p = resolve(cfg, "synthetic_dir", root) / "crew_outcomes.csv"
+    return p if p.exists() else None
 
 
 # --- spatial helpers ----------------------------------------------------------------------------
@@ -369,20 +386,17 @@ class SegmentIndex:
 
     def __init__(self, seg: pd.DataFrame):
         self.seg = seg.reset_index(drop=True)
-        a, b, idx = [], [], []
-        for i, g in enumerate(self.seg["geometry"]):
-            c = _coords(g)
-            for p, q in zip(c[:-1], c[1:]):
-                a.append(p), b.append(q), idx.append(i)
-        if not a:  # no geometry: fall back to midpoints
+        xy, gi = _coords_arrays(self.seg["geometry"]) if "geometry" in self.seg else (np.empty((0, 2)), np.empty(0, int))
+        same = gi[1:] == gi[:-1]                     # consecutive points of one polyline = one piece
+        if not same.any():  # no geometry: fall back to midpoints
             mx, my = to_xy(self.seg["lon"], self.seg["lat"])
             self.ax, self.ay, self.bx, self.by = mx, my, mx, my
             self.idx = np.arange(len(self.seg))
             return
-        a, b = np.array(a), np.array(b)
+        a, b = xy[:-1][same], xy[1:][same]
         self.ax, self.ay = to_xy(a[:, 0], a[:, 1])
         self.bx, self.by = to_xy(b[:, 0], b[:, 1])
-        self.idx = np.array(idx)
+        self.idx = gi[:-1][same]
 
     def nearest(self, lon: float, lat: float, mask: np.ndarray | None = None) -> tuple[int | None, float]:
         px, py = to_xy(lon, lat)
@@ -404,16 +418,14 @@ def distance_m(lon1, lat1, lon2, lat2) -> np.ndarray:
     return np.hypot(x1 - x2, y1 - y2)
 
 
-def _processed_or_copy(cfg: dict, root: Path | None, name: str) -> Path | None:
-    for d in [resolve(cfg, "processed_dir", root), resolve(cfg, "lane_c_copy_dir", root)]:
-        if (d / name).exists():
-            return d / name
-    return None
+def _processed(cfg: dict, root: Path | None, name: str) -> Path | None:
+    p = resolve(cfg, "processed_dir", root) / name
+    return p if p.exists() else None
 
 
 def load_wards(cfg: dict, root: Path | None = None):
     """Ward polygons (lane A data/processed/wards.geojson, MapIt/ONS, OGL) as shapely geometries, or None."""
-    p = _processed_or_copy(cfg, root, "wards.geojson")
+    p = _processed(cfg, root, "wards.geojson")
     if p is None:
         return None
     from shapely.geometry import shape
@@ -427,7 +439,7 @@ def load_wards(cfg: dict, root: Path | None = None):
 
 def load_sources_manifest(cfg: dict, root: Path | None = None) -> list[dict] | None:
     """Lane A's data/processed/sources.json: [{name, label, used_for, licence, retrieved_at, data_date, is_synthetic}]."""
-    p = _processed_or_copy(cfg, root, "sources.json")
+    p = _processed(cfg, root, "sources.json")
     return json.loads(p.read_text(encoding="utf-8")) if p is not None else None
 
 

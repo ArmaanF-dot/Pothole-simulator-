@@ -9,8 +9,6 @@ import numpy as np
 import pandas as pd
 
 BAND_ORDER = ["critical", "high", "prevention", "monitor"]
-BAND_LABEL = {"critical": "Critical (dispatch)", "high": "High (inspect)",
-              "prevention": "Prevention window (treat before failure)", "monitor": "Monitor"}
 
 
 def _flag(seg: pd.DataFrame, col: str) -> pd.Series:
@@ -31,12 +29,11 @@ def consequence(seg: pd.DataFrame, cfg: dict) -> tuple[pd.Series, pd.Series]:
         "within 100 m of a school or hospital": (_flag(seg, "near_school_hospital"), w["school_or_hospital_100m"]),
     }
     C = pd.Series(1.0, index=seg.index)
-    text = pd.Series([[] for _ in range(len(seg))], index=seg.index)
+    text = pd.Series("", index=seg.index, dtype=object)
     for name, (m, f) in parts.items():
         C = C.where(~m, C * f)
-        for i in seg.index[m]:
-            text[i] = text[i] + [name]
-    return C.clip(upper=w["cap"]), text.map(lambda t: ", ".join(t))
+        text = text.where(~m, text.where(text == "", text + ", ") + name)
+    return C.clip(upper=w["cap"]), text
 
 
 def urgency(p30, wear_pct, C, cfg: dict, confirmed_open=None) -> np.ndarray:

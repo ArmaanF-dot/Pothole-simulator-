@@ -34,30 +34,41 @@ def _daily_counts(events: pd.DataFrame, date_col: str, seg_pos: dict, d0: pd.Tim
     return np.vstack([np.zeros((1, n), dtype=np.int32), np.cumsum(m, axis=0, dtype=np.int32)])
 
 
-def _days_since_resurfacing(res: pd.DataFrame, seg_ids, W: pd.DatetimeIndex) -> np.ndarray:
-    """Days since the most recent recorded full resurfacing before week start (NaN if unknown)."""
+def _events_by_segment(res: pd.DataFrame, treatments: list[str], seg_ids):
+    """(segment position, sorted event dates as datetime64[ns]) for each segment with events."""
     pos = {s: i for i, s in enumerate(seg_ids)}
+    ev = res[res["treatment"].isin(treatments)]
+    j = ev["segment_id"].map(pos)
+    ok = j.notna().values
+    d = pd.to_datetime(ev["date"]).values[ok]
+    j = j.values[ok].astype(int)
+    o = np.lexsort((d, j))
+    j, d = j[o], d[o]
+    starts = np.flatnonzero(np.r_[True, j[1:] != j[:-1]]) if len(j) else np.empty(0, int)
+    for a, b in zip(starts, np.r_[starts[1:], len(j)]):
+        yield j[a], d[a:b]
+
+
+def _days_since_resurfacing(res: pd.DataFrame, seg_ids, W: pd.DatetimeIndex) -> np.ndarray:
+    """Days since the most recent recorded full resurfacing before week start (NaN if unknown).
+    "Before" = at least one whole day earlier, i.e. (week_start - date).days > 0."""
     out = np.full((len(W), len(seg_ids)), np.nan)
-    full = res[res["treatment"].isin(["last_resurfaced", "full_resurfacing"])]
-    for sid, d in sorted(zip(full["segment_id"], pd.to_datetime(full["date"])), key=lambda t: t[1]):
-        j = pos.get(sid)
-        if j is None:
-            continue
-        since = (W - d).days.values.astype(float)
-        m = since > 0
-        out[m, j] = since[m]              # later events overwrite earlier ones
+    w = W.values
+    day = np.timedelta64(1, "D")
+    for j, d in _events_by_segment(res, ["last_resurfaced", "full_resurfacing"], seg_ids):
+        i = np.searchsorted(d, w - day, side="right") - 1          # latest event with date <= week_start - 1 day
+        m = i >= 0
+        out[m, j] = ((w[m] - d[i[m]]) // day).astype(float)
     return out
 
 
 def _treatments_2y(res: pd.DataFrame, seg_ids, W: pd.DatetimeIndex) -> np.ndarray:
-    pos = {s: i for i, s in enumerate(seg_ids)}
+    """Preventive treatments with 0 < (week_start - date).days <= 730."""
     out = np.zeros((len(W), len(seg_ids)), dtype=np.float32)
-    prev = res[res["treatment"].isin(["crack_sealing", "surface_dressing"])]
-    for sid, d in zip(prev["segment_id"], pd.to_datetime(prev["date"])):
-        j = pos.get(sid)
-        if j is not None:
-            since = (W - d).days.values
-            out[(since > 0) & (since <= 730), j] += 1
+    w = W.values
+    day = np.timedelta64(1, "D")
+    for j, d in _events_by_segment(res, ["crack_sealing", "surface_dressing"], seg_ids):
+        out[:, j] = np.searchsorted(d, w - day, side="right") - np.searchsorted(d, w - 731 * day, side="right")
     return out
 
 

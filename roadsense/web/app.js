@@ -15,7 +15,7 @@ async function api(path, opts) {
 const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
 const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString();
 const wx = (s) => String(s || "").split(",").map((p) => p.split(":").pop()).filter(Boolean)
-  .map((v, i) => (i === 0 ? "this week " : `wk ${i} `) + v.replace("climatology_10y", "climatology").replace("observed", "observed")).join(", ");
+  .map((v, i) => (i === 0 ? "this week " : `wk ${i} `) + v.replace("climatology_10y", "climatology")).join(", ");
 const gbp = (x) => "£" + Number(x).toFixed(2);
 // Open-Meteo's terms require attribution wherever its weather data is shown
 const OPEN_METEO = `<a class="credit" href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a>`;
@@ -63,6 +63,9 @@ async function loadPlan() {
   renderPlanRows();
 }
 
+// council scheme lists: carriageway work done in the last 2 years (display only, not used in the ranking)
+const treatedTag = (t, long) => !t ? "" : `<div class="small"><span class="vb treated" title="${esc(t.work + ": " + t.scheme + " (" + t.source + (t.match === "manual" ? ", manual match" : "") + ")")}">${esc(t.label)}</span>${long ? ` ${esc(t.work)}. Check before treating again.` : ""}</div>`;
+
 function renderPlanRows() {
   const p = state.plan;
   if (!p) return;
@@ -78,7 +81,7 @@ function renderPlanRows() {
         <div class="reasons">${esc(r.reasons)}</div>
         <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : r.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
-      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div></td>
+      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div>${treatedTag(r.recently_treated)}</td>
       <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
         ${r.confirmed_pothole ? `<div class="small muted">${r.confirmed_by === "crew" ? "crew " : "FixMyStreet "}${esc(r.confirmed_source_id)} · ${esc(r.confirmed_by)}${r.confirmed_is_synthetic ? " " + badge("SYNTHETIC") : ""}</div>` : ""}
         ${r.confirmed_pothole && r.preventive_treatment ? `<div class="small muted">Also suggested: ${esc(r.preventive_treatment_label)} £${fmt(r.preventive_treatment_cost_gbp, 0)} (×${fmt(r.preventive_avoided_per_gbp, 2)})</div>` : ""}</td></tr>`).join("")
@@ -188,7 +191,7 @@ async function showSegment(id, fly) {
       <div>Model</div><div class="small">${esc(s.model_version)} · ${esc(state.meta ? state.meta.badges.model_label : s.trained_on)}${s.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div>
       <div>Consequence</div><div>×${fmt(s.consequence, 2)} ${esc(s.consequence_text)}</div>
       <div>Load</div><div>${fmt(s.esal_day, 0)} ESAL/day · ${esc(s.traffic_note)}${s.load.count_year ? " (DfT count year " + s.load.count_year + ")" : ""}</div>
-      <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}</div>
+      <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}${treatedTag(s.recently_treated, true)}</div>
       ${s.ref ? `<div>Road</div><div>${esc(s.ref)}${s.bus_routes ? " · " + s.bus_routes + " bus routes" : ""}</div>` : ""}
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
       <div>Data dates</div><div class="small">risk as of ${esc(dd.risk_as_of)}<br>${esc(dd.forecast.message)}<br>FixMyStreet retrieved ${esc((dd.fixmystreet_retrieved_at || "").slice(0, 10))}</div>
@@ -341,19 +344,21 @@ async function setCity(c) {
     ["segments", "open"].forEach((id) => state.map.getSource(id) && state.map.getSource(id).setData(empty));
     state.gj = null;
   }
-  if (other) {
-    const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
-    note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
-      <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
-      The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
-      Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;
-  }
+  let gj = null;
   if (state.mapReady) {
-    const gj = await loadMap();
+    gj = await loadMap();
     if (!gj) return;  // superseded by a later city switch
     const b = new maplibregl.LngLatBounds();
     gj.features.forEach((f) => f.geometry.coordinates.forEach((x) => b.extend(x)));
     if (!b.isEmpty()) state.map.fitBounds(b, { padding: 20, duration: 0 });
+  }
+  if (other) {  // the city note reuses the map's GeoJSON meta; it is fetched only when the map is not ready yet
+    const gjMeta = (gj || await api("/segments?" + qs({ city: c }))).meta;
+    if (c !== state.city) return;
+    note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
+      <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
+      The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
+      Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;
   }
 }
 $("#city").onchange = (e) => setCity(e.target.value);
@@ -367,5 +372,6 @@ $("#dup-btn").onclick = () => triage(state.lastFms || $("#fms-pick").value);
 (async () => {
   await loadMeta();
   initMap().then(async () => { state.mapReady = true; await loadMap(); state.map.resize(); });
-  await Promise.all([refresh(), loadFms(), loadSources()]);
+  // meta is already loaded and the map loads itself when ready, so not refresh() (it would fetch both again)
+  await Promise.all([loadPlan(), loadQueue(), loadFms(), loadSources()]);
 })().catch((e) => { $("#stale").textContent = "Could not reach the RoadSense API: " + e.message; $("#stale").classList.remove("hidden"); });

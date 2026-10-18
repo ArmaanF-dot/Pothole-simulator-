@@ -45,8 +45,8 @@ def surrogate(risk: pd.DataFrame, seg: pd.DataFrame, scenario: str, cfg: dict) -
     return out
 
 
-def model_rescore(risk: pd.DataFrame, scenario: str, cfg: dict, root: Path | None = None) -> pd.DataFrame | None:
-    """Re-score with lane B's saved LightGBM + isotonic models. None if lane B is not available."""
+def _baseline_rows(risk: pd.DataFrame, cfg: dict, root: Path | None):
+    """Forward feature rows, the y30 predictor and its baseline prediction (the same for every scenario)."""
     try:
         import lightgbm as lgb
         from roadsense.models import risk as R
@@ -69,7 +69,23 @@ def model_rescore(risk: pd.DataFrame, scenario: str, cfg: dict, root: Path | Non
     def predict(rows):
         return iso.predict(booster.predict(rows[feats]))
 
-    base = predict(fwd)
+    return fwd, predict, predict(fwd)
+
+
+def model_rescore(risk: pd.DataFrame, scenario: str, cfg: dict, root: Path | None = None,
+                  cache: dict | None = None) -> pd.DataFrame | None:
+    """Re-score with lane B's saved LightGBM + isotonic models. None if lane B is not available.
+    cache: a dict kept by the caller so several scenarios share one build of the baseline rows."""
+    key = (str(I.resolve(cfg, "models_dir", root)), str(risk["as_of"].iloc[0]))
+    if cache is not None and key in cache:
+        b = cache[key]
+    else:
+        b = _baseline_rows(risk, cfg, root)
+        if cache is not None:
+            cache[key] = b
+    if b is None:
+        return None
+    fwd, predict, base = b
     pert = fwd.copy()
     shift = int(fwd["horizon_week"].min())  # lane B numbers weeks 1-4 (schemas.md v2); lane C uses 0-3
     m = (pert["horizon_week"] - shift).isin(cfg["whatif"]["weeks"]).values
@@ -97,10 +113,10 @@ def model_rescore(risk: pd.DataFrame, scenario: str, cfg: dict, root: Path | Non
 
 
 def apply_scenario(risk: pd.DataFrame, seg: pd.DataFrame, scenario: str, cfg: dict, root: Path | None = None,
-                   method: str = "auto") -> pd.DataFrame:
+                   method: str = "auto", cache: dict | None = None) -> pd.DataFrame:
     if scenario not in cfg["whatif"]["scenarios"]:
         raise ValueError(f"unknown scenario {scenario}; choose from {list(cfg['whatif']['scenarios'])}")
-    out = model_rescore(risk, scenario, cfg, root) if method in ("auto", "model") else None
+    out = model_rescore(risk, scenario, cfg, root, cache=cache) if method in ("auto", "model") else None
     used = "risk_model" if out is not None else "sensitivity_surrogate"
     if out is None:
         if method == "model":

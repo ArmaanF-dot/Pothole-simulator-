@@ -159,7 +159,9 @@ def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 22
     lab = labels[labels["split"] != "excluded"].drop(columns=["is_main_road"], errors="ignore").copy()
     lab["segment_id"] = lab["segment_id"].astype(str)
     piv = lab.pivot_table(index="segment_id", columns="year", values="n_reports", aggfunc="sum")
-    # neighbour sums per city (graph-neighbour proxy: midpoints within nb_radius_m)
+    pv = piv.to_numpy(float)
+    # neighbour sums per city (graph-neighbour proxy: midpoints within nb_radius_m), as a sparse
+    # segment x segment matrix over the labelled segments so every year's sum is one product
     nb_map = {}
     for city, g in seg.groupby("city"):
         g = g.reset_index(drop=True)
@@ -167,35 +169,47 @@ def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 22
         ids = g["segment_id"].values
         for i, sid in enumerate(ids):
             nb_map[sid] = ids[nbs[i]]
+    from scipy.sparse import coo_matrix
+    rows_, cols_ = [], []
+    for r, sid in enumerate(piv.index):
+        c = piv.index.get_indexer(nb_map.get(sid, []))
+        c = c[c >= 0]
+        rows_.append(np.full(len(c), r)), cols_.append(c)
+    rows_ = np.concatenate(rows_) if rows_ else np.empty(0, int)
+    cols_ = np.concatenate(cols_) if cols_ else np.empty(0, int)
+    adj = coo_matrix((np.ones(len(rows_)), (rows_, cols_)), shape=(len(piv), len(piv))).tocsr()
+    nb_sum = adj @ np.nan_to_num(pv)
     df = lab.merge(s, on=["segment_id", "city"], how="left")
 
     # k-th earlier labelled year for that city (the frozen 2026 year looks back to the last usable year)
     city_years = lab.groupby("city")["year"].apply(lambda s: sorted(s.unique())).to_dict()
+    yr = df["year"].values
+    r_ix = piv.index.get_indexer(df["segment_id"])
 
-    def earlier(city, y, k):
-        ys = [x for x in city_years.get(city, []) if x < y]
-        return ys[-k] if len(ys) >= k else None
+    def earlier_col(k):
+        """Column of piv holding each row's k-th earlier year for its city (-1 if none)."""
+        e = np.full(len(df), np.nan)
+        for city, ys in city_years.items():
+            m = (df["city"] == city).values
+            ys = np.asarray(ys)
+            n = np.searchsorted(ys, yr[m], side="left")          # count of years < y
+            e[m] = np.where(n >= k, ys[np.clip(n - k, 0, None)], np.nan)
+        c = np.full(len(df), -1)
+        ok = ~np.isnan(e)
+        c[ok] = piv.columns.get_indexer(e[ok].astype(int))
+        return c
 
-    def prev(sid, city, y, k):
-        e = earlier(city, y, k)
-        if sid not in piv.index or e is None:
-            return np.nan
-        return piv.at[sid, e]
+    def take(mat, c):
+        ok = (c >= 0) & (r_ix >= 0)
+        out = np.full(len(df), np.nan)
+        out[ok] = mat[r_ix[ok], c[ok]]
+        return out
 
-    keys = list(zip(df["segment_id"], df["city"], df["year"]))
-    df["rep_prev1"] = [prev(a, c, y, 1) for a, c, y in keys]
-    p2 = np.array([prev(a, c, y, 2) for a, c, y in keys], float)
-    p3 = np.array([prev(a, c, y, 3) for a, c, y in keys], float)
+    c1, c2, c3 = earlier_col(1), earlier_col(2), earlier_col(3)
+    df["rep_prev1"] = take(pv, c1)
+    p2, p3 = take(pv, c2), take(pv, c3)
     df["rep_prev2_3"] = np.where(np.isnan(p2) & np.isnan(p3), np.nan, np.nan_to_num(p2) + np.nan_to_num(p3))
-    nb_vals = []
-    for a, c, y in keys:
-        e = earlier(c, y, 1)
-        if e is None:
-            nb_vals.append(np.nan)
-            continue
-        ids = [n for n in nb_map.get(a, []) if n in piv.index]
-        nb_vals.append(float(piv.loc[ids, e].fillna(0).sum()) if ids else 0.0)
-    df["rep_nb_prev1"] = nb_vals
+    df["rep_nb_prev1"] = take(nb_sum, c1)
     df["rep_prev1_per_km"] = df["rep_prev1"] / (df["length_m"] / 1000.0)
     df["city_code"] = pd.Categorical(df["city"])
     if wx is not None and "ward" in seg:
@@ -211,15 +225,19 @@ def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 22
 # --- scoring --------------------------------------------------------------------------------
 def capture_top_length(df: pd.DataFrame, score: np.ndarray, frac: float = TOP_LENGTH_FRAC) -> float:
     """Share of reports that fall on the top `frac` of road length ranked by score (one city-year)."""
-    total = df["n_reports"].sum()
+    return _capture(df["n_reports"].values, df["length_m"].values, score, frac)
+
+
+def _capture(n_reports: np.ndarray, length_m: np.ndarray, score: np.ndarray, frac: float = TOP_LENGTH_FRAC) -> float:
+    total = n_reports.sum()
     if total == 0:
         return float("nan")
-    jitter = 1e-9 * np.random.default_rng(0).random(len(df))
+    jitter = 1e-9 * np.random.default_rng(0).random(len(n_reports))
     o = np.argsort(-(np.asarray(score, float) + jitter))
-    L = df["length_m"].values[o]
+    L = length_m[o]
     take = np.cumsum(L) <= frac * L.sum()
     take[0] = True
-    return float(df["n_reports"].values[o][take].sum() / total)
+    return float(n_reports[o][take].sum() / total)
 
 
 def baseline_scores(df: pd.DataFrame) -> dict:
@@ -256,8 +274,9 @@ BOOT_N, BOOT_SEED = 1000, 2026
 def _mean_capture(df: pd.DataFrame, scores: dict, rows_by_year: list[np.ndarray]) -> dict:
     """Mean over test years of the top-10%-of-length capture, for each scorer, on the same rows."""
     out = {}
+    n_rep, length = np.asarray(df["n_reports"]), np.asarray(df["length_m"])     # a DataFrame or a dict of arrays
     for name, s in scores.items():
-        caps = [capture_top_length(df.iloc[ii], s[ii]) for ii in rows_by_year if len(ii)]
+        caps = [_capture(n_rep[ii], length[ii], s[ii]) for ii in rows_by_year if len(ii)]
         caps = [c for c in caps if c == c]
         out[name] = float(np.mean(caps)) if caps else float("nan")
     return out
@@ -283,10 +302,11 @@ def paired_bootstrap(test: pd.DataFrame, scores: dict, n: int = BOOT_N, seed: in
     rows_of = [order[bounds[i]:bounds[i + 1]] for i in range(len(seg_ids))]
     rng = np.random.default_rng(seed)
     draws = {k: np.empty(n) for k in scores}
+    cols = test[["n_reports", "length_m"]]
     for b in range(n):
         pick = rng.integers(0, len(seg_ids), len(seg_ids))
         idx = np.concatenate([rows_of[i] for i in pick])
-        sub = test.iloc[idx].reset_index(drop=True)
+        sub = {c: cols[c].values[idx] for c in cols}
         yb = yr[idx]
         m = _mean_capture(sub, {k: v[idx] for k, v in scores.items()}, [np.flatnonzero(yb == y) for y in years])
         for k in scores:
@@ -501,16 +521,13 @@ def write_report(path: Path, res: dict, table: pd.DataFrame, radius, inp):
          "Counts measure reporting, not pothole rates; scores rank segments within one city and year.", "",
          "Score: share of that year's reports on the top 10% of road length (mean over test years, 95% paired segment bootstrap).", ""]
 
-    def table_md(r):
-        return results_table(r)
-
     for title, block in [("Test years per city (pooled model)", res["cities"]), ("Leave-one-city-out", res["loco"]),
                          ("Frozen 2026 check (Jan to Oct, small)", res["frozen_2026"] or {})]:
         L += [f"## {title}", ""]
         if not block:
             L += ["Not run (not enough cities or reports).", ""]
         for c, r in block.items():
-            L += [f"### {c}", ""] + table_md(r)
+            L += [f"### {c}", ""] + results_table(r)
     path.write_text("\n".join(L), encoding="utf-8")
 
 

@@ -88,7 +88,7 @@ def build_city(cfg, city):
     stops = gpd.read_file(path("bus_stops.gpkg")).to_crs(BNG)
     near = gpd.sjoin_nearest(gpd.GeoDataFrame(geometry=seg.geometry, crs=BNG), stops[["geometry"]],
                              max_distance=sc["bus_stop_m"], how="left")
-    seg["bus_stop"] = near.groupby(level=0)["index_right"].apply(lambda s: s.notna().any())
+    seg["bus_stop"] = near["index_right"].notna().groupby(level=0).any()
 
     wards = gpd.read_file(path("wards.gpkg")).to_crs(BNG)
     wj = gpd.sjoin_nearest(mid, wards[["ward", "geometry"]], how="left")  # inside = distance 0
@@ -99,7 +99,7 @@ def build_city(cfg, city):
     if os.path.exists(fz_path):
         fz = gpd.read_file(fz_path).to_crs(BNG)
         hit = gpd.sjoin(mid, fz[["geometry"]], predicate="within", how="left")
-        seg["in_flood_area"] = hit.groupby(level=0)["index_right"].apply(lambda s: s.notna().any())
+        seg["in_flood_area"] = hit["index_right"].notna().groupby(level=0).any()
     else:
         print(f"  {city}: no flood file, in_flood_area = False")
         seg["in_flood_area"] = False
