@@ -20,7 +20,7 @@ as inputs (risk model `risk@2026-10-18T07:20` for Southampton and Brighton, plan
 
 ## 0:20-0:40 Southampton plan and payback
 
-1. Point at the header: green **REAL LABELS** badge, "Data updated: 18 Oct 2026, 04:00 (committed snapshot)",
+1. Point at the header: "Data updated: 18 Oct 2026, 04:00 (committed snapshot)",
    "Weather data by Open-Meteo.com".
 2. Point at the plan: "50 segments to treat, week of Mon, 12 Oct 2026"; model "trained on real reports · history
    synthetic".

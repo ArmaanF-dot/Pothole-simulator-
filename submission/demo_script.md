@@ -31,7 +31,7 @@ Screen: the app on "All wards" (map of 8,135 coloured segments).
    Point at the footer: "every source with its date: OpenStreetMap, DfT counts, Open-Meteo, Environment Agency,
    FixMyStreet, and SYNTHETIC badges where council data is simulated."
 2. **Open the top segment (20 s).** Click row 1, **Platform Road**, urgency 42, badge "Pays back ×1.14", treatment
-   "Patch now, schedule resurfacing". Detail card: REAL LABELS badge, wear (SYNTHETIC), the three reasons, traffic confidence,
+   "Patch now, schedule resurfacing". Detail card: wear (SYNTHETIC), the three reasons, traffic confidence,
    and the four forecast weeks marked f (Open-Meteo forecast) and c (climatology). Then the **Worth treating** view (next to
    **All roads** at the top of the plan): "7 roads pay back · 3 confirmed potholes", confirmed potholes first.
 3. **What-if (20 s).** Ward back to **All wards**, What-if: **Rain then frost**. The "Biggest risk rises" box shows

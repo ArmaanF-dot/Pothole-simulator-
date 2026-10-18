@@ -34,7 +34,7 @@ async function loadMeta() {
   }
   const sel = $("#ward");
   if (sel.options.length === 1) m.wards.forEach((w) => sel.add(new Option(w, w)));
-  $("#badges").innerHTML = `<span class="home-only">` + (m.badges.labels_real ? badge("REAL LABELS", "real") + " " : "") + badge("SYNTHETIC", "") + (m.badges.mock_inputs ? badge("MOCK INPUTS", "mock") : "")
+  $("#badges").innerHTML = `<span class="home-only">` + badge("SYNTHETIC", "") + (m.badges.mock_inputs ? badge("MOCK INPUTS", "mock") : "")
     + (m.freshness.stale ? badge("STALE", "stale") : "") + (m.freshness.provisional ? badge("PROVISIONAL", "prov") : "") + `</span>`
     + (m.gemini ? "" : ` <span class="muted small">Gemini off: keyword triage</span>`);
   const b = $("#stale");
@@ -238,7 +238,7 @@ async function showSegment(id, fly) {
     <p><span class="u ${s.band}">${fmt(s.urgency, 0)}</span> ${esc(s.band)}${s.confirmed_open ? " · <b>confirmed open pothole</b>" : ""}</p>
     <div class="kv">
       <div>Wear</div><div>${fmt(s.wear_pct, 0)}% ${s.wear_synthetic ? badge("SYNTHETIC") : ""}</div>
-      <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)} ${s.labels_synthetic ? badge("SYNTHETIC LABELS") : badge("REAL LABELS", "real")}</div>
+      <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)} ${s.labels_synthetic ? badge("SYNTHETIC LABELS") : ""}</div>
       <div>P30 next 4 wks</div><div>${s.risk_weeks.map((w) => `<span title="week of ${esc(w.week_start)}: ${esc(w.weather_basis || "")}${w.forecast_retrieved_at ? ", forecast retrieved " + esc(w.forecast_retrieved_at) : ""}">${fmt(w.p30)}${w.weather_basis === "climatology_10y" ? "<sup>c</sup>" : w.uses_forecast ? "<sup>f</sup>" : ""}</span>`).join(" → ")}
         <div class="small muted">f = Open-Meteo forecast, c = 10-year climatology (beyond the 16-day forecast) · ${OPEN_METEO}</div></div>
       <div>Model</div><div class="small">${esc(s.model_version)} · ${esc(state.meta ? state.meta.badges.model_label : s.trained_on)}${s.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div>
