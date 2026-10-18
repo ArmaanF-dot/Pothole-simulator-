@@ -331,7 +331,7 @@ Southampton's triage is live (`POST /reports`) and its queue lives in `outputs/l
 - `outputs/lane_c/demo_check.md` (demo dry run) and `outputs/lane_c/token_log.jsonl` (Gemini token counts for
   `reports/cost.md`): lane C working files, not read by other lanes.
 
-## 20. Building sites, utility digs, prevention scenario (18 Oct)
+## 20. Building sites and utility digs (18 Oct)
 - `data/processed/construction_sites.csv` (`roadsense.ingest.construction`): source (`brownfield_register` | `osm_construction`),
   city, reference, name, site_address, lon, lat, hectares, min_net_dwellings, max_net_dwellings, permission_status,
   permission_type (OSM: the `construction=*` value), permission_date, ownership_status, public_land, deliverable,
@@ -349,8 +349,4 @@ Southampton's triage is live (`POST /reports`) and its queue lives in `outputs/l
   (completed Street Manager works on the segment; NaN before 2022 rows).
 - `GET /context/sites?city=`: building sites active now (register sites permitted in the last 3 years and still listed,
   plus OSM construction sites). `GET /context/evaluation`: held-out verdict per feature set.
-- `GET /report/prevention`, `outputs/prevention_scenario.json`, `reports/prevention_scenario.md`: modelled scenario
-  (`modelled = true`, `uses_synthetic = true`): horizon_years, base_potholes_year, scenarios{name: label,
-  potholes_by_year[], spend_by_year[], segments_treated, range_total{low, central, high}, avoided_total{...},
-  reactive_cost_avoided_gbp{...}, spend_total_gbp}, assumptions[].
 - `data/models/context_eval.json` + `reports/context_eval.md` (`roadsense.models.context_eval`).

@@ -4,7 +4,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const fmt = (x, d = 3) => (x === null || x === undefined ? "n/a" : Number(x).toFixed(d));
 const BAND_COLOR = { critical: "#c62828", high: "#ef6c00", prevention: "#f9a825", monitor: "#7cb342" };
 const state = { city: "", homeCity: "", ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null,
-  ctxVerdict: {}, impact: null };
+  ctxVerdict: {} };
 const vbClass = (t) => (String(t).startsWith("Pays back") ? "pay" : String(t).startsWith("Confirmed") ? "must"
   : String(t).startsWith("Simulated") ? "sim" : "loss");
 
@@ -107,11 +107,8 @@ function ctxRows(c) {
 function renderPlanRows() {
   const p = state.plan;
   if (!p) return;
-  const worth = state.planView === "worth", impact = state.planView === "impact";
+  const worth = state.planView === "worth";
   const rows = worth ? p.worth.rows : p.rows;
-  ["#plan-head", "#movers", "#plan-table"].forEach((q) => $(q).classList.toggle("hidden", impact || otherCity()));
-  $("#impact").classList.toggle("hidden", !impact || otherCity());
-  if (impact) loadImpact();
   $("#worth-count").textContent = p.worth.rows.length || "";
   $("#worth-head").textContent = p.worth.header;
   $("#worth-head").classList.toggle("hidden", !worth);
@@ -267,48 +264,6 @@ window.outcome = async (sid, o) => {
   $("#detail").insertAdjacentHTML("beforeend", `<p class="card">Re-scored: urgency ${fmt(r.before.urgency, 0)} (${esc(r.before.band)}) → <b>${fmt(r.after.urgency, 0)} (${esc(r.after.band)})</b>, treatment ${esc(r.after.treatment)}.</p>`);
 };
 
-// Without vs with prevention: a MODELLED scenario (roadsense.prevent.scenario), not observed evidence
-const n0 = (x) => Math.round(x).toLocaleString("en-GB");
-const money = (x) => x >= 1e6 ? "£" + (x / 1e6).toFixed(2) + "m" : "£" + Math.round(x / 1000).toLocaleString("en-GB") + "k";
-async function loadImpact() {
-  if (!state.impact) {
-    try { state.impact = await api("/report/prevention"); }
-    catch (e) { $("#impact").innerHTML = `<p class="error">Could not build the scenario: ${esc(e.message)}</p>`; return; }
-  }
-  const r = state.impact, sc = r.scenarios, H = r.horizon_years;
-  const rows = Object.entries(sc);
-  // bars show potholes avoided (the difference prevention makes); the number on the right is the total that still happen
-  const max = Math.max(...rows.map(([, v]) => Math.max(v.avoided_total.low, v.avoided_total.high)));
-  const bar = ([k, v]) => {
-    const rt = v.range_total, a = v.avoided_total, lo = Math.min(a.low, a.high), hi = Math.max(a.low, a.high);
-    const pct = (x) => (100 * x / max).toFixed(2) + "%";
-    if (k === "no_prevention")
-      return `<div class="sc-row base"><div class="sc-label">${esc(v.label)}<div class="small muted">baseline</div></div>
-        <div class="sc-base">none avoided</div><div class="sc-val">${n0(rt.central)}</div></div>`;
-    const sub = `spend ${money(v.spend_total_gbp)} · reactive cost avoided ${money(v.reactive_cost_avoided_gbp.central)}`;
-    return `<div class="sc-row"><div class="sc-label">${esc(v.label)}<div class="small muted">${sub}</div></div>
-      <div class="sc-bar" role="img" aria-label="${esc(v.label)}: ${n0(a.central)} potholes avoided over ${H} years, range ${n0(lo)} to ${n0(hi)}">
-        <span class="fill" style="width:${pct(a.central)}"></span><span class="rng" style="left:${pct(lo)};width:calc(${pct(hi)} - ${pct(lo)})"></span>
-        <span class="lbl">${n0(a.central)} avoided <span class="muted">(${n0(lo)} to ${n0(hi)})</span></span></div>
-      <div class="sc-val">${n0(rt.central)}</div></div>`;
-  };
-  const budgets = rows.filter(([k]) => k.startsWith("budget_"));
-  const allBelow = budgets.length && budgets.every(([, v]) => v.reactive_cost_avoided_gbp.central < v.spend_total_gbp);
-  $("#impact").innerHTML = `<p class="impact-tags">${badge("MODELLED SCENARIO", "prov")} ${badge("SYNTHETIC")} <span class="small muted">wear and history inputs</span></p>
-    <p class="impact-lead"><span class="lead">With no prevention, about ${n0(r.base_potholes_year)} potholes a year need reactive repair</span>
-      ${n0(r.base_potholes_year * H)} over ${H} years across ${n0(r.segments)} council roads. ${esc(r.foi_anchor)}.</p>
-    <p class="small muted">Bars: potholes avoided over ${H} years under each option, central case, with the range when each treatment works
-      half as well or a quarter better than assumed. Right: potholes that still need reactive repair. This applies assumed treatment effects
-      to the risk model; it is not a measured result.</p>
-    <div class="sc"><div class="sc-row sc-head small muted"><div>Option</div><div>Potholes avoided</div><div>Still happen</div></div>${rows.map(bar).join("")}</div>
-    ${allBelow ? `<p class="note">At ALARM's average reactive repair cost (£${state.plan ? state.plan.costs.reactive_repair.toFixed(2) : "87.80"}), the reactive cost avoided is below the treatment spend in every budget
-      option: on cost alone prevention pays back only on the roads in Worth treating. Fewer potholes also means fewer claims, injuries and
-      closures, which this does not count.</p>` : ""}
-    <details><summary>Year by year</summary><table class="rows plain"><thead><tr><th>Option</th>${Array.from({ length: H }, (_, i) => `<th>Year ${i + 1}</th>`).join("")}</tr></thead>
-      <tbody>${rows.map(([, v]) => `<tr><td>${esc(v.label)}</td>${v.potholes_by_year.map((x) => `<td>${n0(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></details>
-    <details><summary>Assumptions</summary><ul class="small">${r.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></details>`;
-}
-
 async function loadFms() {
   const recent = await api("/reports/recent?n=40");
   $("#fms-pick").innerHTML = recent.map((r) => `<option value="${r.id}">${esc(r.reported_at)} · ${esc(r.title).slice(0, 60)}</option>`).join("");
@@ -369,7 +324,6 @@ async function loadSources() {
 
 // the plan never waits on the map: map layers load whenever the base map is ready
 async function refresh() {
-  state.impact = null;
   await Promise.all([loadMeta(), loadPlan(), loadQueue(), state.mapReady ? loadMap() : null]);
   if (state.mapReady) state.map.resize();
 }
@@ -439,8 +393,7 @@ async function setCity(c) {
   [".subtabs", "#plan-head", "#movers", "#plan-table"].forEach((s) => $(s).classList.toggle("hidden", other));
   $("#worth-head").classList.toggle("hidden", other || state.planView !== "worth");
   $("#inspect").classList.toggle("hidden", !other);
-  $("#impact").classList.toggle("hidden", other || state.planView !== "impact");
-  if (!other) renderPlanRows();  // restores the chosen plan view (all, worth, or without vs with prevention)
+  if (!other) renderPlanRows();
   if (other) { loadCityTriage(c); loadInspection(c); }
   const note = $("#city-note");
   note.classList.toggle("hidden", !other);

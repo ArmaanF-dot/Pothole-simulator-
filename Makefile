@@ -5,7 +5,7 @@ CITY ?= Southampton
 CITIES ?= Southampton Brighton Portsmouth
 SCENARIO ?= rain_then_frost
 
-.PHONY: help ingest features synthetic train predict plan_risk plan whatif lights serve retrain triage-eval cost demo-check test all context context-eval scenario
+.PHONY: help ingest features synthetic train predict plan_risk plan whatif lights serve retrain triage-eval cost demo-check test all context context-eval
 
 help:  ## list every target
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/ :/'
@@ -67,9 +67,6 @@ context:  ## building sites (brownfield registers, OSM) and utility digs (DfT St
 
 context-eval:  ## held-out check: do building sites or utility digs help the ranking? (reports/context_eval.md)
 	$(PY) -m roadsense.models.context_eval
-
-scenario:  ## modelled potholes with vs without prevention (reports/prevention_scenario.md)
-	$(PY) -m roadsense.prevent.scenario
 
 test:  ## pytest (small fixtures, no network)
 	$(PY) -m pytest -q

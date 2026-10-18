@@ -324,16 +324,6 @@ class Service:
                       "verdict": v.get("verdict"), "cities": cities}
         return out
 
-    def prevention_scenario(self) -> dict:
-        """Modelled no-prevention vs prevention scenario (roadsense.prevent.scenario), cached."""
-        if getattr(self, "_scenario_report", None) is None:
-            from roadsense.prevent import scenario as SC
-            p = self.plan()
-            self._scenario_report = SC.run_scenarios(self.scored, self.cfg, [x["segment_id"] for x in p["rows"]],
-                                                     [x["segment_id"] for x in p["worth"]["rows"]])
-            self._scenario_report["as_of"] = p.get("as_of")
-        return self._scenario_report
-
     def recently_treated(self) -> dict:
         """{segment_id: flag} from data/processed/soton_resurfacing.csv, cached (display only)."""
         if getattr(self, "_treated", None) is None:
