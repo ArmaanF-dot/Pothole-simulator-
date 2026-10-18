@@ -13,7 +13,6 @@ POST /workorders/{id}/approve | /reject
 POST /outcomes            {segment_id, outcome} or {crew_file: true}
 GET  /sources             every dataset with source, date, licence and synthetic flag
 GET  /meta                badges, freshness, wards
-GET  /report/prevention   MODELLED scenario: expected potholes with no prevention vs prevention (Southampton)
 GET  /context/evaluation  held-out verdict for building sites and utility digs (reports/context_eval.md)
 """
 from __future__ import annotations
@@ -180,10 +179,6 @@ def create_app(service: Service | None = None) -> FastAPI:
             raise HTTPException(404, f"unknown {e}")
         except (ValueError, FileNotFoundError) as e:
             raise HTTPException(400, str(e))
-
-    @app.get("/report/prevention")
-    def prevention_report():
-        return svc().prevention_scenario()
 
     @app.get("/context/sites")
     def context_sites(city: str | None = None):

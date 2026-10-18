@@ -16,9 +16,6 @@ Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampt
   for itself, or a confirmed pothole).
 - **Report triage** (Southampton): real FixMyStreet pothole reports are classified (Gemini, with a keyword fallback)
   and turned into work orders that an officer approves or rejects.
-- **Without vs with prevention** (Southampton): a modelled scenario of expected potholes over five years with no
-  prevention, with this week's plan, with the Worth treating list, and with yearly preventive budgets, with ranges
-  (`reports/prevention_scenario.md`). It applies assumed treatment effects; it is not a measured result.
 - **Building sites and utility digs** (both cities): roads within 150 m of a building site (brownfield land registers
   and OpenStreetMap construction sites) and roads dug up by utility companies or the council in the last 12 months
   (DfT Street Manager) are flagged on the plan, the inspection list and the road card, and building sites are on the
@@ -183,7 +180,6 @@ Everything public is real. The only synthetic parts are records the council alre
 | Brighton map | real-label model with real FixMyStreet history | Real (`uses_synthetic = false`); yearly scale assumed (`scale_source`) |
 | Building sites near a road | brownfield land registers (planning.data.gov.uk) and OpenStreetMap `landuse=construction` | Real; model input (registers) and map/card flags |
 | Utility and highway digs on a road | DfT Street Manager open data, completed works, mid-2020 on | Real; model input and card flags |
-| Without vs with prevention scenario | risk model's expected potholes x assumed treatment effects | **MODELLED**, uses SYNTHETIC wear; assumptions listed on the page |
 
 Every synthetic row carries `is_synthetic = true` and a `source = "synthetic:<generator>@<version>"` tag, and every
 screen that uses one shows a **SYNTHETIC** badge. The dashboard header reads "trained on real reports · history

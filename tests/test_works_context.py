@@ -1,4 +1,4 @@
-"""Building sites, utility digs and the modelled prevention scenario. Small fixtures, no network."""
+"""Building sites and utility digs. Small fixtures, no network."""
 from __future__ import annotations
 
 import io
@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from roadsense.features import works_context as WC
 from roadsense.ingest import streetworks as SW
-from roadsense.prevent import scenario as SC
 
 M_LAT = 1 / 111_320
 
@@ -95,39 +94,10 @@ def test_streetworks_reads_archive_without_end_record():
     assert 50.8 < rows[0]["lat"] < 51.0 and rows[0]["length_m"] == 10.0
 
 
-def _scored(n=40):
-    rng = np.random.default_rng(1)
-    t = np.array(["crack_sealing", "surface_dressing", "patch", "resurface"])[rng.integers(0, 4, n)]
-    lam = rng.gamma(2, 0.2, n)
-    cost = rng.uniform(100, 5000, n)
-    return pd.DataFrame({"segment_id": [f"S{i}" for i in range(n)], "scored": True, "treatment": t, "lambda_year": lam,
-                         "treatment_cost_gbp": cost, "avoided_per_gbp": lam / cost * 1000})
-
-
-def test_scenario_orders_and_budget():
-    cfg = {"treatments": {"hazard_multiplier": {"crack_sealing": 0.6, "surface_dressing": 0.6, "patch": 0.8, "resurface": 0.3},
-                          "life_years": {"crack_sealing": 3, "surface_dressing": 8, "patch": 5, "resurface": 15}},
-           "costs": {"reactive_repair": 87.8}}
-    s = _scored()
-    r = SC.run_scenarios(s, cfg, plan_ids=["S1", "S2"], worth_ids=["S3"])
-    sc = r["scenarios"]
-    base = sc["no_prevention"]["range_total"]["central"]
-    assert r["modelled"] and base == pytest.approx(s["lambda_year"].sum() * SC.HORIZON)
-    for k, v in sc.items():
-        rt = v["range_total"]
-        assert rt["high"] <= rt["central"] <= rt["low"] <= base + 1e-9, k
-        if k.startswith("budget_"):
-            assert all(x <= int(k.split("_")[1]) + 1e-6 for x in v["spend_by_year"])
-    b = [sc[f"budget_{x}"]["range_total"]["central"] for x in SC.BUDGETS]
-    assert b == sorted(b, reverse=True)       # more money, fewer potholes
-
-
-def test_prevention_report_endpoint(tmp_path):
+def test_context_endpoints(tmp_path):
     from roadsense.api.main import create_app
     from roadsense.api.service import Service
     app = TestClient(create_app(Service(root=tmp_path)))
-    r = app.get("/report/prevention").json()
-    assert r["modelled"] is True and r["uses_synthetic"] is True and "no_prevention" in r["scenarios"]
     assert app.get("/context/evaluation").status_code == 200
     assert app.get("/context/sites").json()["sites"] == []
 
