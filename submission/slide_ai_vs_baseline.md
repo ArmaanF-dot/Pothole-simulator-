@@ -2,8 +2,8 @@
 
 ## Headline
 
-**On real Southampton reports, RoadSense's top 10% of roads caught 42% of next year's reported potholes. Ranking by last
-year's complaints caught 34%.**
+**On real Southampton reports, RoadSense's top 10% of roads caught 37% of next year's reported potholes. Ranking by last
+year's complaints caught 34%. In Brighton: 32% against 22%.**
 
 ## Chart (bar, with 95% interval whiskers)
 
@@ -13,24 +13,26 @@ resamples, seed 2026.
 
 | Method | Capture | 95% interval |
 | --- | --- | --- |
-| RoadSense model (road, load, weather + past reports) | 41.6% | 33.9% to 47.9% |
+| RoadSense model (road, load, weather, building sites, digs + past reports) | 37.1% | 29.7% to 43.9% |
 | Baseline: last year's reports | 33.7% | 24.5% to 38.9% |
 | Load x past reports formula | 19.8% | 14.5% to 25.2% |
 | Physical features only (no past reports) | 10.4% | 7.1% to 14.3% |
 | Random | 10% | |
 
-Footnote line: **Model minus baseline +7.9 points (95% 3.1 to 15.5); model ahead in 100% of resamples.** Brighton
-2023-25: 31.2% vs 21.7% (+9.5, 4.9 to 12.2). Trained without Southampton, the model still beats the baseline there
-(36.6% vs 33.5%, +3.1, 0.9 to 8.1): the second-city argument in numbers.
+Footnote line: **Model minus baseline +3.4 points (95% -1.0 to 11.5); model ahead in 94% of resamples.** Brighton
+2023-25: 31.8% vs 21.7% (+10.1, 5.6 to 12.9), ahead in 100%: the clear result. Trained without Southampton, the model
+is level with the baseline there (34.8% vs 33.5%, +1.3, -0.9 to 6.0).
 
 ## Honesty box (keep it on the slide)
 
-- Frozen 2026 check, Jan to Oct, only 33 reports: model 15.2% vs baseline 12.1% (+3.0, -12.1 to 14.8), so no clear
+- Frozen 2026 check, Jan to Oct, only 33 reports: model 21.2% vs baseline 12.1% (+9.1, -7.4 to 24.0), so no clear
   difference at that size.
+- Building sites and utility digs went into the model on 18 Oct; on the test years they cost Southampton 4.5 points
+  (41.6% without them) and added 0.6 in Brighton (`reports/context_eval.md`).
 - Without past reports the model falls short of the baseline (10.4% vs 33.7%): the physical features alone are not
   enough, the combination is what wins.
-- Leave-one-city-out is ahead of the baseline in all three cities, but only clearly for Southampton (Brighton +1.9,
-  -3.0 to 6.0; Portsmouth +6.2, -3.8 to 12.7).
+- Leave-one-city-out is ahead of the baseline in all three cities, but clearly in none (Southampton +1.3, -0.9 to 6.0;
+  Brighton +3.0, -2.1 to 7.7; Portsmouth +6.8, -3.6 to 13.8).
 - FixMyStreet counts measure who reports, not where the damage is, and Southampton has no reports for 2020 to 2022.
 - The live plan is ranked by this real-report model ("trained on real reports · history synthetic": its recent
   pothole history comes from the SYNTHETIC repair log because council logs are not public). The weekly weather model

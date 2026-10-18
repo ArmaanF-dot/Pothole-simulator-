@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-10-18T05:13:21+00:00",
+ "generated_at": "2026-10-18T05:52:35+00:00",
  "test": {
   "Southampton": {
    "model": {
@@ -168,7 +168,7 @@
    {
     "feature": "con_dwellings_3y",
     "share": 0.06520395838373128,
-    "plain": "con_dwellings_3y"
+    "plain": "New homes permitted within 150 m in the last 3 years"
    }
   ],
   "Brighton": [

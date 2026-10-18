@@ -68,16 +68,19 @@ synthetic labels, so its accuracy is a pipeline check, not proof; the real-data 
 ## How well it works
 
 - **Real FixMyStreet test, Southampton 2018-19 (381 reports):** the real-label model (trained on Southampton,
-  Brighton and Portsmouth) put 41.6% of the next year's reports on the top 10% of road length (95% interval 33.9% to
-  47.9%) against 33.7% for "last year's reports" (24.5% to 38.9%). Paired difference +7.9 points (3.1 to 15.5); the
-  model was ahead in 100% of 1,000 bootstrap resamples. Source: `reports/real_risk_eval.md`.
-- **Brighton 2023-25 (802 reports):** 31.2% (27.2% to 34.8%) against 21.7% for last year's reports, +9.5 points
-  (4.9 to 12.2).
-- **Second-city test (leave one city out, trained without that city):** Southampton 36.6% vs 33.5% (+3.1, 0.9 to 8.1);
-  Brighton 18.4% vs 16.5% (+1.9, -3.0 to 6.0); Portsmouth 19.2% vs 13.1% (+6.2, -3.8 to 12.7). Ahead in all three,
-  clearly so only for Southampton.
-- **Frozen 2026 check (Jan to Oct, 33 Southampton reports):** model 15.2% vs last-year baseline 12.1% (+3.0, -12.1 to
-  14.8), so no clear difference at that sample size. We report it anyway.
+  Brighton and Portsmouth) put 37.1% of the next year's reports on the top 10% of road length (95% interval 29.7% to
+  43.9%) against 33.7% for "last year's reports" (24.5% to 38.9%). Paired difference +3.4 points (-1.0 to 11.5); the
+  model was ahead in 94% of 1,000 bootstrap resamples. Source: `reports/real_risk_eval.md`.
+- **Brighton 2023-25 (802 reports):** 31.8% (27.9% to 35.6%) against 21.7% for last year's reports, +10.1 points
+  (5.6 to 12.9).
+- **Building sites and utility digs** (brownfield registers, OpenStreetMap, DfT Street Manager) are model inputs since
+  18 Oct. On the same test years they moved Brighton +0.6 points (-2.2 to 3.7) and Southampton -4.5 (-7.4 to -1.1)
+  against the model without them (Brighton 31.2%, Southampton 41.6%). Source: `reports/context_eval.md`.
+- **Second-city test (leave one city out, trained without that city):** Southampton 34.8% vs 33.5% (+1.3, -0.9 to 6.0);
+  Brighton 19.5% vs 16.5% (+3.0, -2.1 to 7.7); Portsmouth 19.9% vs 13.1% (+6.8, -3.6 to 13.8). Ahead in all three,
+  clearly in none.
+- **Frozen 2026 check (Jan to Oct, 33 Southampton reports):** model 21.2% vs last-year baseline 12.1% (+9.1, -7.4 to
+  24.0), so no clear difference at that sample size. We report it anyway.
 - **Weekly weather model on synthetic labels (time split, used for week-to-week movement and the what-if):** PR-AUC 0.253 for 30-day risk vs 0.095 for prior pothole
   count and 0.036 for road age. Pipeline check only. Source: `reports/risk_eval.md`.
 - **Streetlights:** the Weibull model ranks no better than install year (precision in the top 5%: 0.039 vs

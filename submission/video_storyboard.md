@@ -82,9 +82,9 @@ none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
 
 ## 2:10-2:30 Evidence, business case and one failure case
 
-1. Say (held-out test years only): "On reports it never saw, our top tenth of roads caught 41.6% of Southampton's
-   potholes against 33.7% for last year's reports, and 31.2% against 21.7% in Brighton. Chance is 10%. The model wins in
-   99% and 100% of 1,000 ward resamples."
+1. Say (held-out test years only): "On reports it never saw, our top tenth of roads caught 31.8% of Brighton's
+   potholes against 21.7% for last year's reports, and 37.1% against 33.7% in Southampton. Chance is 10%. The model wins in
+   100% of 1,000 ward resamples in Brighton and 94% in Southampton."
 2. Click the map in the Solent (outside the city): "Outside coverage". Click the grey M271:
    "National Highways road, not scored".
 3. Say: "a licence per council or contractor; Gemini triage costs under £3 a year even at Southampton's full yearly
