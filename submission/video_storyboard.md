@@ -1,8 +1,9 @@
 # Video storyboard (click by click, about 2:30)
 
 Values are from `main` at e93b828 (after the daily refresh) on 17 Oct, with row-click-zoom applied (risk model
-`risk@2026-10-17T20:44` for Southampton and Brighton, plan as of 2026-10-12). **Do not record yet**: wait for the
-recently-treated flag to be merged and for the go-ahead, then re-check every name and number below on the final build.
+`risk@2026-10-17T20:44` for Southampton and Brighton, plan as of 2026-10-12). **Re-checked 18 Oct 03:30 on main after
+the recently-treated merge: every name and number below still matches** (`demo_check` 10/10). The treated flag shows on
+none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
 
 ## Before recording
 
