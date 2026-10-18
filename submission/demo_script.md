@@ -1,8 +1,8 @@
 # Demo video script (2:30, spec timings)
 
-Values below come from the real Southampton segments (lane A) and lane B's risk run on them
-(`risk@2026-10-17T13:48`), checked on 17 Oct 2026 at 16:10. **Re-check them after Merge 3**: a re-run changes the
-ranking, so open the page first and update the names in brackets.
+Values below come from `main` at 1e129e9 (risk model `risk@2026-10-18T05:11`, retrained with building sites and
+utility digs), checked on 18 Oct 2026 at 07:05. A re-run changes the ranking, so open the page first and check the
+names in bold. `submission/video_storyboard.md` is the newer, fuller script.
 
 ## Before recording
 
@@ -25,16 +25,16 @@ Screen: the app on "All wards" (map of 8,135 coloured segments).
 
 ## 0:20 to 1:50 Live demo, steps 1 to 5 (90 s)
 
-1. **Pick a ward (15 s).** Ward dropdown: choose **Bargate** (the city centre: 8 of the city's top 50). Point at the
+1. **Pick a ward (15 s).** Ward dropdown: choose **Bargate** (the city centre: 9 of the city's top 50). Point at the
    heading: "ranked by a model trained on real reports, history synthetic".
    Point at the footer: "every source with its date: OpenStreetMap, DfT counts, Open-Meteo, Environment Agency,
    FixMyStreet, and SYNTHETIC badges where council data is simulated."
-2. **Open the top segment (20 s).** Click row 1, **Maritime Way**, urgency 44, badge "Pays back ×1.41", treatment
-   "Schedule resurfacing". Detail card: REAL LABELS badge, wear (SYNTHETIC), the three reasons, traffic confidence,
+2. **Open the top segment (20 s).** Click row 1, **Platform Road**, urgency 42, badge "Pays back ×1.14", treatment
+   "Patch now, schedule resurfacing". Detail card: REAL LABELS badge, wear (SYNTHETIC), the three reasons, traffic confidence,
    and the four forecast weeks marked f (Open-Meteo forecast) and c (climatology). Then the **Worth treating** tab:
-   "11 roads pay back · 3 confirmed potholes", confirmed potholes first.
+   "7 roads pay back · 3 confirmed potholes", confirmed potholes first.
 3. **What-if (20 s).** Ward back to **All wards**, What-if: **Rain then frost**. The "Biggest risk rises" box shows
-   the busy corridors jumping, e.g. **Shirley High Street** 44 → 88. Say: "heavy port traffic on wet, frozen roads: the corridors move to the top." Set What-if back to
+   the busy corridors jumping, e.g. **Blechynden Terrace / West Park Road** 42 → 87. Say: "heavy port traffic on wet, frozen roads: the corridors move to the top." Set What-if back to
    "This week's forecast".
 4. **Triage a real report (20 s).** Tab **Report triage**. Pick **2026-07-29 · Large pothole** (FixMyStreet report
    9864063), click **Triage report**. The card shows: pothole, attached to segment SOU-2235-01 (0.7 m away), urgency
@@ -61,12 +61,13 @@ Pick one:
 > "The council or its contractor, Balfour Beatty Living Places on a £60m contract to 2030, pays an annual licence.
 > Running cost is in reports/cost.md: the token count is measured, the price is an assumption until confirmed. Every
 > input is national open data, so a second city swaps its boundary and its own repair log for our synthetic one.
-> On real 2018-19 reports, our top 10% of roads caught 42% of reported potholes against 34% for last year's reports."
+> On real reports it never saw, our top 10% of roads caught 32% of Brighton's potholes against 22% for last year's
+> reports, and 37% against 34% in Southampton."
 
 ## Check before filming
 
 - "Pays back" counts reactive repairs avoided over each treatment's service life (assumed lives, in prevent.yaml);
-  only 11 roads pass ×1.0, mostly patches. Most roads are "Loss maker" because resurfacing is costed at an assumed
+  only 7 roads pass ×1.0, mostly patches. Most roads are "Loss maker" because resurfacing is costed at an assumed
   £30/m². Say "ranked by reactive repairs avoided per £", not "everything saves money".
 - Optional (10 s, if time): City picker → **Brighton**: risk map only, "100% real inputs"; plan, triage and lights say
   Southampton only.

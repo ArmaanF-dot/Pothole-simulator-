@@ -1,9 +1,8 @@
 # Video storyboard (click by click, about 2:30)
 
-Values are from `main` at e93b828 (after the daily refresh) on 17 Oct, with row-click-zoom applied (risk model
-`risk@2026-10-17T20:44` for Southampton and Brighton, plan as of 2026-10-12). **Re-checked 18 Oct 03:30 on main after
-the recently-treated merge: every name and number below still matches** (`demo_check` 10/10). The treated flag shows on
-none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
+Values are from `main` at 1e129e9 on 18 Oct, after the risk model was retrained with building sites and utility digs
+(risk model `risk@2026-10-18T05:11` for Southampton and Brighton, plan as of 2026-10-12). **Re-checked 18 Oct 07:05:
+every name and number below matches the app** (`demo_check` 10/10). Clear to record.
 
 ## Before recording
 
@@ -19,12 +18,12 @@ none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
 
 ## 0:20-0:40 Southampton plan and payback
 
-1. Point at the header: green **REAL LABELS** badge, "Data updated: 17 Oct 2026, 16:05 (committed snapshot)",
+1. Point at the header: green **REAL LABELS** badge, "Data updated: 18 Oct 2026, 04:00 (committed snapshot)",
    "Weather data by Open-Meteo.com".
 2. Point at the plan: "50 segments to treat this week, as of 2026-10-12"; model "trained on real reports · history
    synthetic".
-3. Click the **Worth treating** tab. Read the header: "11 roads pay back · 3 confirmed potholes · £21,665 treatment ·
-   £29,859 reactive cost avoided". Say: "confirmed potholes come first, they're a repair we have to make; then roads
+3. Click the **Worth treating** tab. Read the header: "7 roads pay back · 3 confirmed potholes · £7,429 treatment ·
+   £10,487 reactive cost avoided". Say: "confirmed potholes come first, they're a repair we have to make; then roads
    where prevention pays for itself."
 
 ## 0:40-1:15 Why this road? Castle Road, then triage its report live
@@ -33,11 +32,13 @@ none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
    fix ×1.54**. The map flies to the road, outlines it and opens its card.
 2. In the card, point at:
    - Urgency **70**, high band.
-   - Reasons, all real: "open FixMyStreet report, confirmed by keyword", "long segment (178 m)", "busy junction".
+   - Reasons, all real: "open FixMyStreet report, confirmed by keyword", "long segment (178 m)", "road dug up 3x in
+     the last 2 years (Street Manager)". Under **Street works**: 3 digs in the last 12 months (council, BT, Southern
+     Water).
    - Treatment "Permanent pothole repair" £57: £56.94 planned now instead of £87.80 reactive later (ALARM 2025).
    - Wear 23% carries the **SYNTHETIC** badge: wear is part of urgency and is a stand-in; the reasons are real.
 3. Say: "Castle Road is first because a resident reported a pothole here and it's confirmed: a repair we have to make,
-   and a planned repair costs a third less than a reactive one." (Its own model risk is low, P30 0.005; don't call it
+   and a planned repair costs a third less than a reactive one." (Its own model risk is low, P30 0.004; don't call it
    high risk.)
 4. Click the **Report triage** tab. In the dropdown pick **2026-07-29 · Large pothole** (FixMyStreet report 9864063,
    the report behind Castle Road). Click **Triage report**. The card shows: pothole, Gemini (model name in the card),
@@ -49,20 +50,20 @@ none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
 
 ## 1:15-1:45 Flagged, but don't spend yet: The Avenue
 
-1. Click the **Prevention plan** tab, **All roads**. **Ward** dropdown: choose **Portswood**. Click row 4, **The
+1. Click the **Prevention plan** tab, **All roads**. **Ward** dropdown: choose **Portswood**. Click row 6, **The
    Avenue** (A33, the 186 m segment, `SOU-153759797-01`), badge **Loss maker ×0.19**.
 2. In the card, point at:
    - Reasons, all from real data: "HGV and bus flow 577 a day", "heavy axle load (802 ESAL/day)", "long segment (186 m)".
    - Traffic: "DfT count on this segment" (2022 count, high confidence). Consequence: A-road, bus route, cycle route.
-   - Urgency 40.5, prevention band; P30 for the next four weeks 0.007 rising to 0.028 (weeks 1-3 Open-Meteo forecast,
+   - Urgency 40.5, prevention band; P30 for the next four weeks 0.008 rising to 0.029 (weeks 1-3 Open-Meteo forecast,
      week 4 climatology). Wear (88%, part of urgency) carries the **SYNTHETIC** badge: only the reasons are real.
-   - Cost logic: "Patch now, schedule resurfacing" £90 against £16.67 of reactive repairs avoided over its 5-year life.
+   - Cost logic: "Patch now, schedule resurfacing" £90 against £17.22 of reactive repairs avoided over its 5-year life.
 3. Say: "real traffic and axle load flag this road, but the tool says don't spend yet, so it's not in Worth treating.
    The reasons and the numbers are on screen; the officer decides." (Say "flagged", not "high risk": in the app "High"
    is the 70-89 urgency band.)
-   - Alternative with bus routes as a reason: Portswood row 2, the other **The Avenue** (173 m, `SOU-229102664-00`):
-     "8 bus routes use this road", "HGV and bus flow 769 a day", DfT count on the same road, **Loss maker ×0.27**
-     (£90 against £23.99).
+   - Alternative with bus routes and a dig as reasons: Portswood row 2, the other **The Avenue** (173 m,
+     `SOU-229102664-00`): "long segment (173 m)", "road dug up 3x in the last 2 years (Street Manager)", "8 bus routes
+     use this road"; DfT count on the same road (HGV and bus flow 769 a day), **Loss maker ×0.36** (£90 against £32.07).
 4. **Ward** back to **All wards**. Do not open Millbrook Flyover (row 1 in All roads, row 4 in Worth treating): its top
    three reasons are all from the synthetic council repair log.
 
@@ -75,7 +76,7 @@ none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
    then the top 50 by risk.
 3. Under **Open reports (inspect first)**, click row 1, **Tisbury Road** (Central Hove), **Top 5%**: open report
    2026-09-11 "Large pothole, & degraded road surface"; reasons "21 bus routes use this road", "long segment (160 m)",
-   "bus stop on this segment". All real.
+   "road dug up 3x in the last 2 years (Street Manager)". All real.
 4. Say: "Southampton's council repair history isn't public, so it's a labelled stand-in; in Brighton, where the real
    history exists, the same model runs on real data only."
 5. Switch **City** back to **Southampton**.
@@ -93,9 +94,9 @@ none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
 ## Sources for the numbers
 
 - Plan, Worth treating header, Castle Road and The Avenue cards, Tisbury Road row: `/plan/prevention`,
-  `/segments/{id}` and `/plan/inspection?city=Brighton` on e93b828; "Data updated" from `/meta`.
-- Evidence: `data/models/eval_ci.json` (`test`: Southampton 2018-19, 381 reports, 17 wards, model ahead in 99% of
-  resamples; Brighton 2023-25, 802 reports, 23 wards, 100%), also `reports/risk_eval.md` "Held-out ranges by ward".
+  `/segments/{id}` and `/plan/inspection?city=Brighton` on 1e129e9; "Data updated" from `/meta`.
+- Evidence: `data/models/eval_ci.json` (`test`: Brighton 2023-25, 802 reports, 23 wards, model ahead in 100% of
+  resamples; Southampton 2018-19, 381 reports, 17 wards, 94%), also `reports/risk_eval.md` "Held-out ranges by ward".
   Not the 2026 frozen check (33 and 30 reports, too few).
 - Cost: `reports/cost.md` (£0.00056 per report; £1.74 to £2.32 a year over 3,113 to 4,162 repairs a year, 2021-25).
 
@@ -103,6 +104,7 @@ none of the demo roads (only plan row 35, Bassett Avenue). Clear to record.
 
 - The "Data updated" line in the header (its time changes with each refresh).
 - Plan count and as-of date, the Worth treating header and Castle Road at row 1, The Avenue's row number in Portswood
-  and its numbers, and whatever the recently-treated flag shows on these rows.
+  and its numbers, and whatever the recently-treated flag and the building-site and dig tags show on these rows (the
+  daily refresh updates them).
 - Tisbury Road is still first under Open reports (its report must still be inside the 120-day window).
 - The triage report still snaps to a segment (`python -m roadsense.api.demo_check`, step 4).
