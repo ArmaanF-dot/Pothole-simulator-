@@ -16,6 +16,6 @@ boundary and repair records.
 
 _Word count: 148 (wc, body only). Sources: Southampton Local Highway Maintenance Transparency Report, June 2025 (4,247
 fills in 2024/25; 0% preventative spend in 2020/21, 2022/23, 2023/24, 2024/25); ALARM 2025 (£87.80 vs £56.94);
-`reports/real_risk_eval.md` / `reports/risk_eval.md` (Southampton 2018-19: 41.6% vs 33.7%, 381 reports; Brighton
-2023-25: 31.2% vs 21.7%, 802 reports). The spec's FOI figures count repairs per calendar year (e.g. 4,162 in 2024);
+`reports/real_risk_eval.md` / `reports/risk_eval.md` (Southampton 2018-19: 37.1% vs 33.7%, 381 reports; Brighton
+2023-25: 31.8% vs 21.7%, 802 reports). The spec's FOI figures count repairs per calendar year (e.g. 4,162 in 2024);
 the transparency report counts fills per financial year; "about 4,000" covers both._
