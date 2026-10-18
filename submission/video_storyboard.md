@@ -1,8 +1,8 @@
 # Video storyboard (click by click, about 2:30)
 
-Values are from `main` at 1e129e9 on 18 Oct, after the risk model was retrained with building sites and utility digs
-(risk model `risk@2026-10-18T05:11` for Southampton and Brighton, plan as of 2026-10-12). **Re-checked 18 Oct 07:05:
-every name and number below matches the app** (`demo_check` 10/10). Clear to record.
+Values are from `main` at 81d6e10 on 18 Oct, after the risk model was retrained with building sites and utility digs
+as inputs (risk model `risk@2026-10-18T07:20` for Southampton and Brighton, plan as of 2026-10-12). **Re-checked on
+18 Oct against the running app at 81d6e10: every name and number below matches** (`demo_check` 10/10). Clear to record.
 
 ## Before recording
 
@@ -10,6 +10,8 @@ every name and number below matches the app** (`demo_check` 10/10). Clear to rec
 2. Delete `outputs/lane_c/state.json` (or `POST /demo/reset`) so the triage queue is empty.
 3. `python -m roadsense.api`, wait for `warming: ...`, open http://127.0.0.1:8000 in a 1920x1080 window at 100% zoom.
 4. Pan the map once so the OpenStreetMap tiles are cached.
+5. The side panel is resizable: drag the divider between the panel and the map so the plan table's Value column is
+   fully visible (double-click the divider to reset).
 
 ## 0:00-0:20 Problem (voice over the map of Southampton)
 
@@ -20,9 +22,9 @@ every name and number below matches the app** (`demo_check` 10/10). Clear to rec
 
 1. Point at the header: green **REAL LABELS** badge, "Data updated: 18 Oct 2026, 04:00 (committed snapshot)",
    "Weather data by Open-Meteo.com".
-2. Point at the plan: "50 segments to treat this week, as of 2026-10-12"; model "trained on real reports · history
+2. Point at the plan: "50 segments to treat, week of Mon, 12 Oct 2026"; model "trained on real reports · history
    synthetic".
-3. Click the **Worth treating** tab. Read the header: "7 roads pay back · 3 confirmed potholes · £7,429 treatment ·
+3. Click **Worth treating** (the view switch next to **All roads** at the top of the plan). Read the header: "7 roads pay back · 3 confirmed potholes · £7,429 treatment ·
    £10,487 reactive cost avoided". Say: "confirmed potholes come first, they're a repair we have to make; then roads
    where prevention pays for itself."
 
@@ -94,7 +96,7 @@ every name and number below matches the app** (`demo_check` 10/10). Clear to rec
 ## Sources for the numbers
 
 - Plan, Worth treating header, Castle Road and The Avenue cards, Tisbury Road row: `/plan/prevention`,
-  `/segments/{id}` and `/plan/inspection?city=Brighton` on 1e129e9; "Data updated" from `/meta`.
+  `/segments/{id}` and `/plan/inspection?city=Brighton` on 81d6e10; "Data updated" from `/meta`.
 - Evidence: `data/models/eval_ci.json` (`test`: Brighton 2023-25, 802 reports, 23 wards, model ahead in 100% of
   resamples; Southampton 2018-19, 381 reports, 17 wards, 94%), also `reports/risk_eval.md` "Held-out ranges by ward".
   Not the 2026 frozen check (33 and 30 reports, too few).

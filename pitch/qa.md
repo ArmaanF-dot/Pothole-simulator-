@@ -69,10 +69,15 @@ A highways officer does: Gemini only drafts a work order (category, segment, urg
 
 **13. Does it know when the council already resurfaced a road?**
 Yes, for display: plan rows and road cards show "Treated <date>" when Southampton's own published scheme lists show carriageway work completed or in progress within 2 years before the plan date. It is a prompt to check before treating again; it does not change urgency or ranking. The lists come from the council's live 2026 page and Wayback copies of its removed 2023/24 pages, matched to roads by exact name and ward, plus six hand-checked matches for the Millbrook Flyover.
-*Numbers:* 1 of the 50 plan rows is flagged: #35 Bassett Avenue, "Treated May 2026". The 2023/24 schemes (Millbrook Flyover £219,980, Winchester Road inlay) date to March 2024 at the latest, more than 2 years before 12 Oct 2026, so they are not flagged. Window fixed at 2 years on 18 Oct; don't change it before judging.
+*Numbers:* 1 of the 50 plan rows is flagged: #38 Bassett Avenue, "Treated May 2026". The 2023/24 schemes (Millbrook Flyover £219,980, Winchester Road inlay) date to March 2024 at the latest, more than 2 years before 12 Oct 2026, so they are not flagged. Window fixed at 2 years on 18 Oct; don't change it before judging.
 *Source:* `roadsense/api/treated.py`, `data/processed/soton_resurfacing.csv`, `data/resurfacing_manual_matches.csv`.
 
-**Do building sites and utility digs help?**
+**14. Do building sites and utility digs help?**
 Not on held-out years. They are in the model at the team's request, and roads dug up the year before did have twice the report rate of similar-risk roads in Brighton, but the model can only learn digs from 2022 (Street Manager starts in 2020) and Southampton's test years have no dig data. Adding both moved Brighton up 0.6 points and Southampton down 4.5.
 *Numbers:* Brighton 31.8% with them vs 31.2% without (+0.6, 95% -2.2 to +3.7); Southampton 37.1% vs 41.6% (-4.5, 95% -7.4 to -1.1). Sources: brownfield land registers (planning.data.gov.uk), OpenStreetMap construction sites, DfT Street Manager, all open data.
 *Source:* `reports/context_eval.md`, `DATA_GAPS.md` (building sites and utility digs).
+
+**15. Is the data live, or a snapshot?**
+Both: the repo carries a snapshot from the event, and a daily refresh updates it unattended. Once a day it pulls new FixMyStreet reports (and rechecks which are still open), the weather forecast, building sites and any newly published Street Manager month, then re-scores with the frozen models (no retraining). Each run builds into a new folder and only switches the app over after validation; on any failure the previous data stays live. The header shows "Data updated" and turns amber STALE after 36 hours.
+*Numbers:* 120-day window for "open" reports; last 7 builds kept; Street Manager is published monthly, so digs move once a month. Southampton's refresh stops after the next Monday until the synthetic repair log is regenerated; Brighton (all real) keeps refreshing.
+*Source:* README "Daily refresh", `roadsense/refresh/run.py`, `scripts/schedule_refresh.bat`.

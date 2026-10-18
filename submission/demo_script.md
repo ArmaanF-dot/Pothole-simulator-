@@ -1,7 +1,7 @@
 # Demo video script (2:30, spec timings)
 
-Values below come from `main` at 1e129e9 (risk model `risk@2026-10-18T05:11`, retrained with building sites and
-utility digs), checked on 18 Oct 2026 at 07:05. A re-run changes the ranking, so open the page first and check the
+Values below come from `main` at 81d6e10 (risk model `risk@2026-10-18T07:20`, retrained with building sites and
+utility digs as inputs), checked against the running app on 18 Oct 2026 (`demo_check` 10/10). A re-run changes the ranking, so open the page first and check the
 names in bold. `submission/video_storyboard.md` is the newer, fuller script.
 
 ## Before recording
@@ -12,7 +12,8 @@ python -m roadsense.api                # wait for "warming: ..." then open http:
 ```
 
 - POST `/demo/reset` (or delete `outputs/lane_c/state.json`) so the triage queue starts empty.
-- Browser at 1280 px wide, zoom 100%, OSM tiles loaded once so the map is cached.
+- Browser at 1280 px wide, zoom 100%, OSM tiles loaded once so the map is cached. If the plan table looks cramped,
+  drag the divider between the side panel and the map to widen it (double-click the divider resets it).
 - Second tab ready for the failure case: `http://127.0.0.1:8000/?forecast_as_of=2026-10-15T06:00:00`.
 
 ## 0:00 to 0:20 Problem (20 s)
@@ -31,8 +32,8 @@ Screen: the app on "All wards" (map of 8,135 coloured segments).
    FixMyStreet, and SYNTHETIC badges where council data is simulated."
 2. **Open the top segment (20 s).** Click row 1, **Platform Road**, urgency 42, badge "Pays back ×1.14", treatment
    "Patch now, schedule resurfacing". Detail card: REAL LABELS badge, wear (SYNTHETIC), the three reasons, traffic confidence,
-   and the four forecast weeks marked f (Open-Meteo forecast) and c (climatology). Then the **Worth treating** tab:
-   "7 roads pay back · 3 confirmed potholes", confirmed potholes first.
+   and the four forecast weeks marked f (Open-Meteo forecast) and c (climatology). Then the **Worth treating** view (next to
+   **All roads** at the top of the plan): "7 roads pay back · 3 confirmed potholes", confirmed potholes first.
 3. **What-if (20 s).** Ward back to **All wards**, What-if: **Rain then frost**. The "Biggest risk rises" box shows
    the busy corridors jumping, e.g. **Blechynden Terrace / West Park Road** 42 → 87. Say: "heavy port traffic on wet, frozen roads: the corridors move to the top." Set What-if back to
    "This week's forecast".
