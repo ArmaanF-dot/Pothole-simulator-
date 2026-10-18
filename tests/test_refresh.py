@@ -3,7 +3,6 @@
 One full refresh runs once per module (about 2-3 minutes: it re-scores both cities with the frozen models).
 """
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 

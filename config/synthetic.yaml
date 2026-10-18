@@ -92,7 +92,6 @@ risk:
   label_radius_m: 15
   holdout_months: 12
   spatial_holdout_wards: 3
-  train_sample_neg_ratio: 20    # keep all positives and this many negatives per positive
   top_frac: 0.05
   forward_weeks: 4
   lgbm: {n_estimators: 300, learning_rate: 0.05, num_leaves: 31, min_child_samples: 50, subsample: 0.8, subsample_freq: 1, colsample_bytree: 0.8, verbose: -1}

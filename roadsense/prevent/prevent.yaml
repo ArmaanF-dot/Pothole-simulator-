@@ -102,7 +102,6 @@ triage:
   mode: fast                               # fast = code runs the lookups, Gemini drafts in 1 call; agent = up to max_turns
   max_turns: 6
   min_interval_s: 13                       # free tier allows 5 requests a minute (per model)
-  max_retries: 6
   snap_radius_m: 30
   lamp_radius_m: 25
   duplicate_radius_m: 15
@@ -111,9 +110,6 @@ triage:
   report_floor_band: high                  # proposed urgency for a pothole report before inspection
 
 cost:                                      # ASSUMPTIONS for reports/cost.md
-  price_per_mtok_usd: {input: 0.30, output: 2.50}   # Gemini 2.5 Flash paid tier; check ai.google.dev/pricing
   usd_to_gbp: 0.75
   officers: 4
-  reports_per_month: 300                   # about 3,600 Southampton pothole repairs a year (FOI 2021-2025)
-  plans_per_officer_per_month: 4.33
   hosting_gbp_per_month: 25                # one small VM for the API and static page

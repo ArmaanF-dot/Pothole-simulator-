@@ -1,13 +1,12 @@
 """M5 tests: segment-week table, leakage, risk model, wear (small fixture, no network)."""
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from conftest_lane_b import small_config
 from roadsense.models import risk
-from roadsense.models.dataset import FEATURES, HISTORY_FEATS, MONOTONE, WEATHER_FEATS, build_table
+from roadsense.models.dataset import FEATURES, MONOTONE, WEATHER_FEATS, build_table
 from roadsense.synthetic import build
 
 

@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 
 from roadsense.models import real_risk as rr
-from roadsense.synthetic.common import ROOT, load_config, neighbours, resolve
+from roadsense.synthetic.common import ROOT, load_config, resolve
 
 MODEL_VERSION = "plan-risk-v0.1"
 HISTORY_YEARS = 3

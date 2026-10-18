@@ -82,8 +82,6 @@ class CityView:
         if r.empty:
             return None
         r = r.iloc[0]
-        clean = lambda v: None if v is None or (isinstance(v, float) and not np.isfinite(v)) else (
-            v.item() if hasattr(v, "item") else v)
         return {"city": self.city, "segment_id": sid, "name": r["name"], "ward": r.get("ward"), "highway": r["highway"],
                 "risk_band": r["risk_band"], "risk_label": RANK_LABEL[r["risk_band"]],
                 "reasons": [x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str)],

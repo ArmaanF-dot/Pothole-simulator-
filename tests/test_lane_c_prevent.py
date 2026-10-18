@@ -164,7 +164,7 @@ def test_real_segments_copy_with_mock_risk(cfg):
     seg, meta = I.load_segments(cfg, root=I.ROOT)
     if meta["kind"] != "real":
         pytest.skip("real segments not in use")
-    risk, rmeta = I.load_risk(cfg, root=I.ROOT, seg=seg)
+    risk, _ = I.load_risk(cfg, root=I.ROOT, seg=seg)
     sc = P.score(seg, risk, cfg)
     assert sc["ward"].nunique() == 17
     nh = sc["owner"] == "national_highways"
