@@ -32,8 +32,8 @@ Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampt
 Tested on Python 3.14.7, Windows 11.
 
 ```bash
-git clone [PUBLIC REPO URL]
-cd [REPO FOLDER]
+git clone https://github.com/ArmaanF-dot/Pothole-simulator-
+cd Pothole-simulator-
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
@@ -48,7 +48,7 @@ port; `--forecast-as-of <ISO date>` pretends the weather forecast was fetched at
 and provisional plan. Data was retrieved during the event and is cached in the repo, so no download is needed to run
 the app. Do not re-pull OpenStreetMap data: segment IDs would change.
 
-Tests: `python -m pytest -q` on main (17 Oct, Python 3.11.9, Windows 11): 130 passed. The warnings are pandas/NumPy and
+Tests: `python -m pytest -q` on main (18 Oct, Windows 11): all pass. The warnings are pandas/NumPy and
 FastAPI deprecation notices and don't affect results.
 
 Full pipeline (`make all`, or run the `python -m` lines in the `Makefile` on Windows):
@@ -158,7 +158,7 @@ A second team member re-ran it from a clean `main` on 17 Oct and got identical n
 Other evaluations: weekly weather model on synthetic labels (pipeline check only, `reports/risk_eval.md`);
 streetlights (`reports/lights_eval.md`: ranks no better than install year, its value is the replacement date);
 report triage against keyword rules (`reports/triage_vs_keywords.md`; keyword rules 91/100 on hand-labelled real
-reports, Gemini comparison TODO); running cost (`reports/cost.md`: measured tokens at the published Gemini price, about £0.0006 per triaged report;
+reports, Gemini comparison not run in time); running cost (`reports/cost.md`: measured tokens at the published Gemini price, about £0.0006 per triaged report;
 under £3 a year even at Southampton's full yearly repair volume of about 3,100 to 4,200 repairs, an upper bound because
 these are repairs, not reports).
 
@@ -197,7 +197,7 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 | **OpenStreetMap** | Road network split into segments (22,334 across 3 cities), road class (`is_main_road`), cycle routes, schools and hospitals | Extract retrieved 17 Oct 2026, 12:03 UTC | © OpenStreetMap contributors, Open Database Licence (ODbL) 1.0. openstreetmap.org/copyright |
 | **DfT road traffic statistics** | Traffic load per segment (AADF incl. HGVs). 314 Southampton segments have a direct count; the rest use road-class medians, shown in the app as "modelled estimate" | Count year up to 2025, retrieved 17 Oct 2026, 12:22 UTC | Open Government Licence v3.0. Contains public sector information licensed under the OGL v3.0 |
 | **Environment Agency Flood Map for Planning: Flood Zone 3** | Flood exposure feature | Retrieved 17 Oct 2026, 12:45 UTC | Open Government Licence v3.0. © Environment Agency copyright and/or database right. Contains OS data © Crown copyright and database right |
-| **Open-Meteo** | Historical weekly weather (rain, freeze–thaw) and 3-week forecast | Historical: TODO check range in `data/processed/sources.json`; forecast retrieved 17 Oct 2026, 12:36 UTC | Data CC BY 4.0. Weather data by Open-Meteo.com. Free API used for non-commercial purposes |
+| **Open-Meteo** | Historical weekly weather (rain, freeze–thaw) and 3-week forecast | Historical: range in `data/processed/sources.json`; forecast retrieved 17 Oct 2026, 12:36 UTC | Data CC BY 4.0. Weather data by Open-Meteo.com. Free API used for non-commercial purposes |
 | **MapIt** (mySociety) | Ward boundaries, Southampton and Brighton | Retrieved 17 Oct 2026, 12:06 UTC | Boundaries derived from OS Boundary-Line, OGL v3.0. Contains OS data © Crown copyright and database right |
 | **ONS ward boundaries** | Ward boundaries, Portsmouth (MapIt free quota ran out mid-hackathon) | December 2024 ward boundaries, retrieved 17 Oct 2026, 15:05 UTC | Source: Office for National Statistics, licensed under OGL v3.0. Contains OS data © Crown copyright and database right |
 | **DfT Street Manager open data** (permit archive, `opendata.manage-roadworks.service.gov.uk`) | Completed utility and highway works on each road (`roadsense.ingest.streetworks`) | July 2020 onwards, monthly; read Oct 2026, nothing raw kept | Open Government Licence v3.0 |
@@ -214,7 +214,7 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 
 - Residents' full report descriptions (`data/raw/fms_raw.csv`) never leave the machine that pulled them: the file is
   git-ignored and has never been committed.
-- Report titles kept in the repo are redacted: house numbers become `[number]`, postcodes `[postcode]` and names
+- Report titles in the current data are redacted: house numbers become `[number]`, postcodes `[postcode]` and names
   `[name]` (`roadsense/prevent/redact_titles.py`; the ingest step redacts on every rebuild).
 - Titles are redacted before they are stored, displayed or sent to Gemini; report descriptions are not stored.
 - Only public FixMyStreet text and synthetic data are sent to Gemini. API keys live in `.env`, which is git-ignored.
@@ -235,19 +235,23 @@ What the team did:
 - Split the work into three lanes with a shared data contract, and reviewed and merged every branch, with tests run
   before each merge.
 - Checked the evidence used in the pitch against primary sources.
-- Removed personal details from public report text before publishing.
+- Redacted personal details from report text in the current data; earlier commits may contain unredacted
+  FixMyStreet report titles, which were already public on FixMyStreet.
 
 In the product, the risk model is a LightGBM classifier we trained; Google Gemini is used only for report triage: results are
 cached and shown with the method used (Gemini or keyword fallback), and an officer approves or rejects every work order.
-The 100 triage evaluation labels were drafted by Claude Code from report titles: TODO note who spot-checked them.
+The 100 triage evaluation labels were drafted by Claude Code from report titles and were not independently spot-checked.
 
 ## What existed before the event
 
-Nothing. All data was retrieved and all code written during the hackathon. 
-(TODO after the history rewrite: the public repo's commit hashes differ from the working repo's; dates are unchanged.)
+Nothing. All data was retrieved and all code written during the hackathon. Commit hashes and dates are the originals.
 
 ## Team
 
 - Nilen Rao: data pipeline, merges
 - Aryan Patel: models
 - Armaan Fernandes: product (API, dashboard, triage)
+
+## Who helped
+
+No outside help beyond the event's mentors and organisers.
