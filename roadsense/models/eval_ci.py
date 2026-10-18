@@ -175,7 +175,7 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True)
     cfg_a = rr.lane_a_config(root)
     labels = inp["labels"] if inp.get("labels") is not None else rr.labels_from_reports(
         inp["reports"], seg, cfg_a, cfg_a.get("labels", {}).get("snap_m", 25))
-    table = rr.build_table(seg, labels, wx=inp.get("wx"))
+    table = rr.build_table(seg, labels, wx=inp.get("wx"), context=inp.get("context"))
     table = table[table["rep_prev1"].notna()].reset_index(drop=True)
     held = rr.fit(table[table["split"] == "train"], cfg)        # exactly as real_risk.run: training years only
     table["held_score"] = held.predict_proba(table[held.feature_names_used_])[:, 1]

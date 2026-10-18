@@ -88,6 +88,9 @@ crew:
   cracking_scale: 2.0
 
 risk:
+  # Building sites and utility digs as inputs to the real-label model (team decision 18 Oct; held-out effect in
+  # reports/context_eval.md). false = the model before 18 Oct; the page still shows them as flags either way.
+  context_features: true
   horizons: [7, 30]
   label_radius_m: 15
   holdout_months: 12

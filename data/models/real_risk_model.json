@@ -19,6 +19,11 @@
   "rep_prev2_3",
   "rep_nb_prev1",
   "rep_prev1_per_km",
+  "con_sites_3y",
+  "con_dwellings_3y",
+  "uw_carriageway_1y",
+  "uw_any_1y",
+  "uw_carriageway_2y",
   "city_code"
  ],
  "city_categories": [
@@ -35,5 +40,5 @@
  "city_total_potholes_year": 3113.0,
  "history_years": 3,
  "history_source": "synthetic council log mapped by within-city rank to FixMyStreet 2015-19 counts",
- "generated_at": "2026-10-17T20:44:12+00:00"
+ "generated_at": "2026-10-18T05:11:29+00:00"
 }

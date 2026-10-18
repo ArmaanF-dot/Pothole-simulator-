@@ -7,7 +7,7 @@ Inputs (real, OGL):  data/processed/construction_sites.csv  (roadsense.ingest.co
                      data/processed/street_works.csv        (roadsense.ingest.streetworks)
 Outputs:             data/processed/site_segments.csv   one row per (site, segment) with the segment within SITE_M
                                                          of the site point: city, reference, segment_id, dist_m
-                     data/processed/works_segments.csv  each completed work with the segment its midpoint lies on
+                     data/processed/works_segments.parquet  each completed work with the segment its midpoint lies on
                                                          (nearest within WORK_M), or blank
 
 Rules (ASSUMPTIONS, not council figures):
@@ -18,8 +18,8 @@ Rules (ASSUMPTIONS, not council figures):
   Street Manager works_location_type includes Carriageway: a footway-only dig does not open the road surface.
 
 `yearly(...)` gives the per segment-year features the held-out check uses (roadsense.models.context_eval); each row
-sees only earlier years. `current(...)` gives the flags the officer page shows (display only: nothing here changes
-urgency, ranking or treatment unless the held-out check says it helps; see reports/context_eval.md).
+sees only earlier years; real_risk.build_table adds them to the risk model's features (real_risk.CONTEXT).
+`current(...)` gives the flags the officer page shows for what is near the road now.
 """
 from __future__ import annotations
 
@@ -90,7 +90,9 @@ def load_linked(root: str = ROOT) -> tuple[pd.DataFrame | None, pd.DataFrame | N
     """(sites, site_segments, works_segments), each None when missing."""
     p = os.path.join(root, "data", "processed")
     rd = lambda n: pd.read_csv(os.path.join(p, n), dtype={"segment_id": str}) if os.path.exists(os.path.join(p, n)) else None
-    return rd("construction_sites.csv"), rd("site_segments.csv"), rd("works_segments.csv")
+    wp = os.path.join(p, "works_segments.parquet")
+    works = pd.read_parquet(wp) if os.path.exists(wp) else None
+    return rd("construction_sites.csv"), rd("site_segments.csv"), works
 
 
 def yearly(rows: pd.DataFrame, sites, links, works) -> pd.DataFrame:
@@ -190,7 +192,8 @@ def main():
         w = snap_works(seg, pd.read_csv(wp, dtype=str))
         keep = ["city", "permit_reference", "promoter", "activity_type", "work_category", "works_location_type",
                 "street_name", "actual_end", "year", "carriageway", "segment_id", "snap_m"]
-        w[keep].to_csv(os.path.join(PROC, "works_segments.csv"), index=False)
+        w = w[keep].astype({"year": "Int64", "carriageway": bool})
+        w.to_parquet(os.path.join(PROC, "works_segments.parquet"), index=False)
         print(f"works_segments: {len(w)} works, {w['segment_id'].notna().mean():.0%} on a council segment within {WORK_M:.0f} m")
 
 

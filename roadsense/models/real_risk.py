@@ -32,8 +32,14 @@ STATIC = ["log_esal_day", "log_hgv_bus_aadf", "bus_routes", "bus_stop", "junctio
           "is_main_road"]
 WEATHER = ["wx_rain_30d_mean", "wx_freeze_thaw", "wx_frost_hours", "wx_rain_then_frost", "wx_hot_days"]
 HISTORY = ["rep_prev1", "rep_prev2_3", "rep_nb_prev1", "rep_prev1_per_km"]
+# Building sites near the segment (brownfield registers) and utility digs on it (DfT Street Manager), from earlier
+# years only (roadsense.features.works_context). Added to the full model on 18 Oct at the team's request; the
+# held-out gain is reported in reports/context_eval.md. NaN where a city or year has no data (Portsmouth; works
+# before 2021), which LightGBM treats as missing.
+CONTEXT = ["con_sites_3y", "con_dwellings_3y", "uw_carriageway_1y", "uw_any_1y", "uw_carriageway_2y"]
 PHYSICAL = STATIC + WEATHER                     # no past-report features at all
-FEATURES = PHYSICAL + HISTORY + ["city_code"]   # full model = physical + past reports
+FEATURES = PHYSICAL + HISTORY + CONTEXT + ["city_code"]   # full model = physical + past reports + sites and digs
+FEATURES_NO_CONTEXT = PHYSICAL + HISTORY + ["city_code"]  # the model before 18 Oct, for the held-out comparison
 MONOTONE = {"log_esal_day": 1, "log_hgv_bus_aadf": 1}
 TOP_LENGTH_FRAC = 0.10
 
@@ -66,7 +72,8 @@ def load_inputs(root: Path) -> dict | None:
             break
     wx_p = proc / "weather_weekly.parquet"
     wx = pd.read_parquet(wx_p) if wx_p.exists() else None
-    return {"seg": seg, "labels": labels, "reports": reports, "wx": wx}
+    from roadsense.features.works_context import load_linked
+    return {"seg": seg, "labels": labels, "reports": reports, "wx": wx, "context": load_linked(str(root))}
 
 
 def yearly_weather(wx: pd.DataFrame) -> pd.DataFrame:
@@ -138,8 +145,11 @@ def split_for(city: str, year: int, cfg_a: dict) -> str:
 
 
 # --- table ----------------------------------------------------------------------------------
-def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 220.0, wx: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Segment-year rows; history features use only the segment's earlier years, weather only the previous year."""
+def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 220.0, wx: pd.DataFrame | None = None,
+                context: tuple | None = None) -> pd.DataFrame:
+    """Segment-year rows; history features use only the segment's earlier years, weather only the previous year.
+    `context` = (sites, site_segments, works_segments) from works_context.load_linked: CONTEXT columns from earlier
+    years only (NaN when not given)."""
     seg = seg.copy()
     if "city" not in seg:
         seg["city"] = "Southampton"
@@ -205,6 +215,14 @@ def build_table(seg: pd.DataFrame, labels: pd.DataFrame, nb_radius_m: float = 22
     for c in WEATHER:
         if c not in df:
             df[c] = np.nan
+    if context is not None and any(x is not None for x in context):
+        from roadsense.features.works_context import yearly
+        ex = yearly(df, *context)
+        for c in CONTEXT:
+            df[c] = ex[c].values
+    for c in CONTEXT:
+        if c not in df:
+            df[c] = np.nan
     return df
 
 
@@ -236,8 +254,14 @@ def city_weights(df: pd.DataFrame) -> np.ndarray:
     return df["city"].map(f).values.astype(float)
 
 
+def features_for(cfg: dict) -> list[str]:
+    """FEATURES, or FEATURES_NO_CONTEXT when config/synthetic.yaml risk.context_features is false (one switch for
+    training, the weekly scores and the evaluations)."""
+    return FEATURES if cfg.get("risk", {}).get("context_features", True) else FEATURES_NO_CONTEXT
+
+
 def fit(train: pd.DataFrame, cfg: dict, features: list[str] | None = None):
-    features = features or FEATURES
+    features = features or features_for(cfg)
     import lightgbm as lgb
     params = dict(cfg["risk"]["lgbm"])
     params.update(objective="binary", monotone_constraints=[MONOTONE.get(f, 0) for f in features],
@@ -334,6 +358,7 @@ def feature_reliance(model, test: pd.DataFrame) -> dict:
         "weather": WEATHER,
         "road class and length": ["highway_code", "is_main_road", "length_m"],
         "bus, junction, flood": ["bus_routes", "bus_stop", "junction", "in_flood_area"],
+        "building sites and street works": CONTEXT,
         "city": ["city_code"],
     }
     g = {k: float(sum(by.get(f, 0.0) for f in fs)) for k, fs in groups.items()}
@@ -402,7 +427,8 @@ def risk_eval_section(res: dict, src: str, provenance: str = "") -> str:
     blocks += [(c, r, "leave-one-city-out (trained on the other cities, all usable years)") for c, r in (res.get("loco") or {}).items()]
     blocks += [(c, r, "frozen 2026 check (Jan to Oct)") for c, r in (res.get("frozen_2026") or {}).items()]
     L += ["**Full model** = physical features + past-report features (reports on the segment and its neighbours in earlier "
-          "years). **Physical only** = same setup with no past-report feature at all: traffic load (esal_day, DfT HGV and bus flow), "
+          "years) + building sites near the road and utility digs on it in earlier years (brownfield registers, DfT Street "
+          "Manager; added 18 Oct, gain in reports/context_eval.md). **Physical only** = same setup with no past-report feature at all: traffic load (esal_day, DfT HGV and bus flow), "
           "bus routes, bus stop, junction, flood area, highway class, road length, and the previous year's ward weather "
           "(rain, freeze-thaw, frost hours, rain-then-frost, hot days).", ""]
     for c, r, label in blocks:
@@ -449,7 +475,7 @@ def run(cfg: dict | None = None, root: Path | None = None, verbose: bool = True,
         seg["city"] = "Southampton"
     radius = cfg_a.get("labels", {}).get("snap_m", 25)
     labels = inp["labels"] if inp.get("labels") is not None else labels_from_reports(inp["reports"], seg, cfg_a, radius)
-    table = build_table(seg, labels, wx=inp.get("wx"))
+    table = build_table(seg, labels, wx=inp.get("wx"), context=inp.get("context"))
     usable = table[table["rep_prev1"].notna()]
     res = {"cities": {}, "loco": {}, "frozen_2026": None}
     train = usable[usable["split"] == "train"]
