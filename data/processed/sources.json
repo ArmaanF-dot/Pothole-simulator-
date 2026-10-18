@@ -61,5 +61,32 @@
   "retrieved_at": "2026-10-17T11:00+00:00",
   "data_date": "2026-09-05",
   "is_synthetic": false
+ },
+ {
+  "name": "DfT Street Manager",
+  "label": "Street works: DfT Street Manager open data (OGL)",
+  "used_for": "utility and highway digs per road (display only)",
+  "licence": "OGL v3",
+  "retrieved_at": "2026-10-18T03:00+00:00",
+  "data_date": "2026-09-30",
+  "is_synthetic": false
+ },
+ {
+  "name": "Brownfield land registers",
+  "label": "Building sites: brownfield land registers via planning.data.gov.uk (OGL)",
+  "used_for": "building sites near each road (display only)",
+  "licence": "OGL v3",
+  "retrieved_at": "2026-10-18T02:58+00:00",
+  "data_date": "2026-10-18",
+  "is_synthetic": false
+ },
+ {
+  "name": "OpenStreetMap construction sites",
+  "label": "Building sites: OpenStreetMap landuse=construction (ODbL)",
+  "used_for": "building sites active now (display only)",
+  "licence": "ODbL 1.0",
+  "retrieved_at": "2026-10-18T03:00+00:00",
+  "data_date": "2026-10-18",
+  "is_synthetic": false
  }
 ]

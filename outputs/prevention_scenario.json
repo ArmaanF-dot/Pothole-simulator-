@@ -1,0 +1,261 @@
+{
+ "horizon_years": 5,
+ "segments": 8135,
+ "base_potholes_year": 3113.0,
+ "foi_anchor": "Southampton FOI 2025: 3,113 potholes repaired (risk model's yearly total)",
+ "effect_scale": {
+  "low": 0.5,
+  "central": 1.0,
+  "high": 1.25
+ },
+ "budgets": [
+  250000,
+  500000,
+  1000000,
+  2000000
+ ],
+ "scenarios": {
+  "no_prevention": {
+   "label": "No prevention (reactive repairs only)",
+   "potholes_by_year": [
+    3113.0,
+    3113.0,
+    3113.0,
+    3113.0,
+    3113.0
+   ],
+   "spend_by_year": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "segments_treated": 0,
+   "range_total": {
+    "low": 15565.0,
+    "central": 15565.0,
+    "high": 15565.0
+   },
+   "avoided_total": {
+    "low": 0.0,
+    "central": 0.0,
+    "high": 0.0
+   }
+  },
+  "this_week_plan": {
+   "label": "This week's plan, treated now",
+   "potholes_by_year": [
+    2986.367068237928,
+    2986.367068237928,
+    2986.367068237928,
+    2986.367068237928,
+    2986.367068237928
+   ],
+   "spend_by_year": [
+    101661.90000000001,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "segments_treated": 50,
+   "range_total": {
+    "low": 15248.417670594818,
+    "central": 14931.835341189639,
+    "high": 14773.544176487048
+   },
+   "avoided_total": {
+    "low": 316.58232940518246,
+    "central": 633.1646588103613,
+    "high": 791.4558235129516
+   },
+   "reactive_cost_avoided_gbp": {
+    "low": 27795.92852177502,
+    "central": 55591.85704354972,
+    "high": 69489.82130443715
+   },
+   "spend_total_gbp": 101661.90000000001
+  },
+  "worth_treating": {
+   "label": "Worth treating list, treated now",
+   "potholes_by_year": [
+    3037.6016532307303,
+    3037.6016532307303,
+    3037.6016532307303,
+    3037.6016532307303,
+    3037.6016532307303
+   ],
+   "spend_by_year": [
+    21664.920000000002,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "segments_treated": 14,
+   "range_total": {
+    "low": 15376.504133076829,
+    "central": 15188.00826615365,
+    "high": 15093.760332692069
+   },
+   "avoided_total": {
+    "low": 188.49586692317098,
+    "central": 376.99173384634923,
+    "high": 471.2396673079311
+   },
+   "reactive_cost_avoided_gbp": {
+    "low": 16549.937115854413,
+    "central": 33099.87423170946,
+    "high": 41374.84278963635
+   },
+   "spend_total_gbp": 21664.920000000002
+  },
+  "budget_250000": {
+   "label": "\u00a3250,000 a year on preventive treatment",
+   "potholes_by_year": [
+    2881.200819215057,
+    2791.131863502761,
+    2739.896845087648,
+    2690.3052215051603,
+    2648.0551679568994
+   ],
+   "spend_by_year": [
+    249946.02,
+    246821.73,
+    223970.25,
+    246789.3,
+    235275.34000000003
+   ],
+   "segments_treated": 1354,
+   "range_total": {
+    "low": 14657.794958633762,
+    "central": 13750.589917267527,
+    "high": 13296.987396584407
+   },
+   "avoided_total": {
+    "low": 907.2050413662382,
+    "central": 1814.4100827324728,
+    "high": 2268.012603415593
+   },
+   "reactive_cost_avoided_gbp": {
+    "low": 79652.60263195571,
+    "central": 159305.2052639111,
+    "high": 199131.50657988904
+   },
+   "spend_total_gbp": 1202802.6400000001
+  },
+  "budget_500000": {
+   "label": "\u00a3500,000 a year on preventive treatment",
+   "potholes_by_year": [
+    2791.131863502761,
+    2688.990936076926,
+    2608.8537518507305,
+    2546.76115749359,
+    2498.472247507026
+   ],
+   "spend_by_year": [
+    496767.75,
+    476311.95,
+    491401.81,
+    480814.74,
+    495060.1
+   ],
+   "segments_treated": 1730,
+   "range_total": {
+    "low": 14349.604978215513,
+    "central": 13134.209956431034,
+    "high": 12526.51244553879
+   },
+   "avoided_total": {
+    "low": 1215.3950217844867,
+    "central": 2430.790043568966,
+    "high": 3038.4875544612096
+   },
+   "reactive_cost_avoided_gbp": {
+    "low": 106711.68291267793,
+    "central": 213423.36582535523,
+    "high": 266779.20728169417
+   },
+   "spend_total_gbp": 2440356.35
+  },
+  "budget_1000000": {
+   "label": "\u00a31,000,000 a year on preventive treatment",
+   "potholes_by_year": [
+    2688.990936076926,
+    2543.9239788307914,
+    2455.3199329625622,
+    2390.5423747153427,
+    2334.350164666968
+   ],
+   "spend_by_year": [
+    973079.7,
+    996708.25,
+    990381.48,
+    988401.4300000002,
+    992969.8600000001
+   ],
+   "segments_treated": 2194,
+   "range_total": {
+    "low": 13989.063693626294,
+    "central": 12413.12738725259,
+    "high": 11625.159234065739
+   },
+   "avoided_total": {
+    "low": 1575.9363063737055,
+    "central": 3151.872612747409,
+    "high": 3939.840765934261
+   },
+   "reactive_cost_avoided_gbp": {
+    "low": 138367.20769961135,
+    "central": 276734.4153992225,
+    "high": 345918.0192490281
+   },
+   "spend_total_gbp": 4941540.72
+  },
+  "budget_2000000": {
+   "label": "\u00a32,000,000 a year on preventive treatment",
+   "potholes_by_year": [
+    2540.988618177101,
+    2387.1919093234083,
+    2275.850759962623,
+    2188.873296754825,
+    2121.874834222399
+   ],
+   "spend_by_year": [
+    1999342.1500000001,
+    1983887.8599999999,
+    1997141.0100000002,
+    1996919.1099999999,
+    1984349.6999999997
+   ],
+   "segments_treated": 3053,
+   "range_total": {
+    "low": 13539.889709220179,
+    "central": 11514.779418440357,
+    "high": 10502.224273050446
+   },
+   "avoided_total": {
+    "low": 2025.1102907798213,
+    "central": 4050.2205815596426,
+    "high": 5062.775726949554
+   },
+   "reactive_cost_avoided_gbp": {
+    "low": 177804.6835304683,
+    "central": 355609.3670609366,
+    "high": 444511.7088261708
+   },
+   "spend_total_gbp": 9961639.829999998
+  }
+ },
+ "modelled": true,
+ "uses_synthetic": true,
+ "assumptions": [
+  "Expected potholes a year per segment = the risk model's share of Southampton's FOI 2025 total (3,113), from the model trained on real FixMyStreet reports (history input SYNTHETIC), held at that level every year.",
+  "Treatment per segment depends on SYNTHETIC wear (no council condition survey).",
+  "Treatment effects are ASSUMED hazard multipliers: crack sealing and surface dressing x0.6, patch x0.8, resurfacing x0.3; low/central/high scale the effect by 0.5/1.0/1.25.",
+  "Service lives are ASSUMED: crack sealing 3, surface dressing 8, patch 5, resurfacing 15 years.",
+  "Treatment \u00a3/m2 are ASSUMED placeholders; reactive repair \u00a387.80 is the ALARM 2025 average.",
+  "Expected values only: real years scatter around them (Poisson noise and weather)."
+ ]
+}

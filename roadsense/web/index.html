@@ -49,7 +49,9 @@
       <nav class="subtabs" aria-label="Plan view">
         <button data-view="all" class="active">All roads</button>
         <button data-view="worth">Worth treating <span id="worth-count" class="pill ok"></span></button>
+        <button data-view="impact">Without vs with prevention</button>
       </nav>
+      <div id="impact" class="hidden"><p class="muted">Loading the scenario…</p></div>
       <p id="worth-head" class="worth-head hidden"></p>
       <p id="plan-head" class="muted">Loading the plan…</p>
       <div id="movers"></div>
@@ -97,6 +99,7 @@
       <span><i class="monitor"></i><b class="lg">Monitor</b></span>
       <span><i class="grey"></i>National Highways</span>
       <span><i class="dot"></i>Open FixMyStreet report</span>
+      <span><i class="site"></i>Building site</span>
     </div>
     <aside id="detail" class="hidden" aria-live="polite"></aside>
   </section>

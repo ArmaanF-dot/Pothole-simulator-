@@ -13,6 +13,8 @@ POST /workorders/{id}/approve | /reject
 POST /outcomes            {segment_id, outcome} or {crew_file: true}
 GET  /sources             every dataset with source, date, licence and synthetic flag
 GET  /meta                badges, freshness, wards
+GET  /report/prevention   MODELLED scenario: expected potholes with no prevention vs prevention (Southampton)
+GET  /context/evaluation  held-out verdict for building sites and utility digs (reports/context_eval.md)
 """
 from __future__ import annotations
 
@@ -84,7 +86,7 @@ def create_app(service: Service | None = None) -> FastAPI:
                 raise HTTPException(404, f"no risk file for {city}")
             if r is None:
                 raise HTTPException(404, "unknown segment")
-            return r
+            return {**r, "context": s.works_context(city).get(segment_id)}
         r = s.segment(segment_id, scenario=scenario)
         if r is None:
             raise HTTPException(404, "unknown segment")
@@ -116,7 +118,11 @@ def create_app(service: Service | None = None) -> FastAPI:
         if city == s.cfg["coverage"]["city"]:
             raise HTTPException(400, f"{city} has the prevention plan: use /plan/prevention")
         try:
-            return s.city_inspection(city, top_n=top_n)
+            out = s.city_inspection(city, top_n=top_n)
+            cx = s.works_context(city)
+            for r in out["rows"]:  # display only
+                r["context"] = cx.get(r["segment_id"])
+            return out
         except FileNotFoundError:
             raise HTTPException(404, f"no risk file for {city}")
 
@@ -174,6 +180,23 @@ def create_app(service: Service | None = None) -> FastAPI:
             raise HTTPException(404, f"unknown {e}")
         except (ValueError, FileNotFoundError) as e:
             raise HTTPException(400, str(e))
+
+    @app.get("/report/prevention")
+    def prevention_report():
+        return svc().prevention_scenario()
+
+    @app.get("/context/sites")
+    def context_sites(city: str | None = None):
+        from roadsense.features import works_context as WC
+        s = svc()
+        c = city or s.cfg["coverage"]["city"]
+        sites, _, _ = WC.load_linked(str(s.root))
+        as_of = s.risk_meta.get("as_of") if c == s.cfg["coverage"]["city"] else s.city_view(c).meta.get("as_of")
+        return {"city": c, "as_of": as_of, "years": WC.CON_YEARS, "sites": WC.live_sites(c, as_of, sites)}
+
+    @app.get("/context/evaluation")
+    def context_evaluation():
+        return svc().context_verdict()
 
     @app.get("/sources")
     def sources():

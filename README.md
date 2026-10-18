@@ -16,6 +16,14 @@ Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampt
   for itself, or a confirmed pothole).
 - **Report triage** (Southampton): real FixMyStreet pothole reports are classified (Gemini, with a keyword fallback)
   and turned into work orders that an officer approves or rejects.
+- **Without vs with prevention** (Southampton): a modelled scenario of expected potholes over five years with no
+  prevention, with this week's plan, with the Worth treating list, and with yearly preventive budgets, with ranges
+  (`reports/prevention_scenario.md`). It applies assumed treatment effects; it is not a measured result.
+- **Building sites and utility digs** (both cities): roads within 150 m of a building site (brownfield land registers
+  and OpenStreetMap construction sites) and roads dug up by utility companies or the council in the last 12 months
+  (DfT Street Manager) are flagged on the plan, the inspection list and the road card, and building sites are on the
+  map. A held-out check (`reports/context_eval.md`) found no clear gain in ranking from either, so they are shown as
+  context and do not move the ranking.
 - **Streetlights** (Southampton, synthetic demo data).
 - **Brighton risk map**: the same risk model applied to Brighton & Hove, a city with plentiful real report data, as an
   out-of-area check.
@@ -159,6 +167,9 @@ Everything public is real. The only synthetic parts are records the council alre
 | Road wear, resurfacing history, streetlight register and faults, crew outcomes | `data/synthetic/` (seed 2026) | **SYNTHETIC** |
 | Treatment £/m² | our assumptions | Assumption, labelled in the app |
 | Brighton map | real-label model with real FixMyStreet history | Real (`uses_synthetic = false`); yearly scale assumed (`scale_source`) |
+| Building sites near a road | brownfield land registers (planning.data.gov.uk) and OpenStreetMap `landuse=construction` | Real; context only (no held-out gain) |
+| Utility and highway digs on a road | DfT Street Manager open data, completed works, mid-2020 on | Real; context only (no held-out gain) |
+| Without vs with prevention scenario | risk model's expected potholes x assumed treatment effects | **MODELLED**, uses SYNTHETIC wear; assumptions listed on the page |
 
 Every synthetic row carries `is_synthetic = true` and a `source = "synthetic:<generator>@<version>"` tag, and every
 screen that uses one shows a **SYNTHETIC** badge. The dashboard header reads "trained on real reports · history
@@ -179,6 +190,9 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 | **Open-Meteo** | Historical weekly weather (rain, freeze–thaw) and 3-week forecast | Historical: TODO check range in `data/processed/sources.json`; forecast retrieved 17 Oct 2026, 12:36 UTC | Data CC BY 4.0. Weather data by Open-Meteo.com. Free API used for non-commercial purposes |
 | **MapIt** (mySociety) | Ward boundaries, Southampton and Brighton | Retrieved 17 Oct 2026, 12:06 UTC | Boundaries derived from OS Boundary-Line, OGL v3.0. Contains OS data © Crown copyright and database right |
 | **ONS ward boundaries** | Ward boundaries, Portsmouth (MapIt free quota ran out mid-hackathon) | December 2024 ward boundaries, retrieved 17 Oct 2026, 15:05 UTC | Source: Office for National Statistics, licensed under OGL v3.0. Contains OS data © Crown copyright and database right |
+| **DfT Street Manager open data** (permit archive, `opendata.manage-roadworks.service.gov.uk`) | Completed utility and highway works on each road (`roadsense.ingest.streetworks`) | July 2020 onwards, monthly; read Oct 2026, nothing raw kept | Open Government Licence v3.0 |
+| **Brownfield land registers** via planning.data.gov.uk | Housing and development sites with permission dates near each road (`roadsense.ingest.construction`) | Brighton 253 sites; Southampton 37 (last updated 2017). Retrieved 18 Oct 2026 | Open Government Licence v3.0 |
+| **OpenStreetMap** `landuse=construction` (Overpass API) | Building sites active now, both cities | Retrieved 18 Oct 2026 | © OpenStreetMap contributors, ODbL 1.0 |
 | **Google Gemini API** | Report triage (classification, draft work orders) | Model fallback list `gemini-3.8-flash` → `gemini-3-flash-preview` → `gemini-flash-latest` | Gemini API terms. Only public FixMyStreet text and synthetic data are sent |
 
 ### Figures quoted in the pitch (not model inputs)
