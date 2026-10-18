@@ -66,3 +66,8 @@ About £0.00056 per triaged report, so under £3 a year even if every one of Sou
 A highways officer does: Gemini only drafts a work order (category, segment, urgency from the risk model, recommended action), and nothing is dispatched until an officer presses Approve. Brighton's triage is read-only, with no work orders.
 *Numbers:* draft → `pending_approval` → `approved` (with officer and time recorded).
 *Source:* `roadsense/api/service.py` (`approve`), `POST /workorders/{id}/approve`, `roadsense/agent/triage.py`.
+
+**13. Does it know when the council already resurfaced a road?**
+Yes, for display: plan rows and road cards show "Treated <date>" when Southampton's own published scheme lists show carriageway work completed or in progress within 2 years before the plan date. It is a prompt to check before treating again; it does not change urgency or ranking. The lists come from the council's live 2026 page and Wayback copies of its removed 2023/24 pages, matched to roads by exact name and ward, plus six hand-checked matches for the Millbrook Flyover.
+*Numbers:* 1 of the 50 plan rows is flagged: #35 Bassett Avenue, "Treated May 2026". The 2023/24 schemes (Millbrook Flyover £219,980, Winchester Road inlay) date to March 2024 at the latest, more than 2 years before 12 Oct 2026, so they are not flagged. Window fixed at 2 years on 18 Oct; don't change it before judging.
+*Source:* `roadsense/api/treated.py`, `data/processed/soton_resurfacing.csv`, `data/resurfacing_manual_matches.csv`.
