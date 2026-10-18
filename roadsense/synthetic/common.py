@@ -48,8 +48,6 @@ def to_lonlat(x, y):
 
 
 # --- inputs ------------------------------------------------------------------
-
-
 def _read_any(path: Path) -> pd.DataFrame:
     return pd.read_parquet(path) if path.suffix == ".parquet" else pd.read_csv(path)
 
