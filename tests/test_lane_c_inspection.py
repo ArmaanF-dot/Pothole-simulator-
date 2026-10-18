@@ -47,13 +47,16 @@ def test_inspection_list_rows(view):
     assert all(r["history_source"] == "real" and not r["uses_synthetic"] for r in rows)
     assert all(r["action"] == "Inspect" for r in rows)
     blob = json.dumps(out)
-    for word in ["£", "gbp", "p30", "treatment_label", "cost_"]:
+    for word in ["£", "gbp", "treatment_label", "cost_", "risk_label", "Top 1%"]:
         assert word not in blob.replace("treatments are chosen on inspection", "")
     assert out["badge"] == "100% real inputs"
     assert [x["label"] for x in out["sections"]] == ["Open reports (inspect first)", "Highest predicted risk"]
     assert [x["count"] for x in out["sections"]] == [1, 50]
     assert rows[0]["section"] == "open" and all(r["section"] == "risk" for r in rows[1:])
-    assert out["header"].startswith("Testcity inspection list: ranked by risk from real FixMyStreet reports.")
+    assert out["header"].startswith("Testcity inspection list: ranked by urgency from real FixMyStreet reports.")
+    assert all(r["band"] in {"critical", "high", "prevention", "monitor"} for r in rows)
+    risk = [r["urgency"] for r in rows[1:]]
+    assert risk == sorted(risk, reverse=True)                                          # risk section by urgency
 
 
 def test_weather_summaries_are_never_reasons():

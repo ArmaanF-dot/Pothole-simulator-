@@ -321,11 +321,15 @@ def test_second_city_map_only(root):
     assert all(not row["segment_id"].startswith("BRI-") for row in app.get("/plan/prevention").json()["rows"])
 
 
-def test_second_city_card_has_bands_not_numbers(root):
+def test_second_city_card_has_urgency_like_home(root):
+    """Brighton gets Southampton's 0-100 urgency and bands (no wear term), not within-city rank tags."""
     test_second_city_map_only(root)
     app = TestClient(create_app(Service(root=root)))
     gj = app.get("/segments", params={"city": "Brighton"}).json()
     props = gj["features"][0]["properties"]
-    assert "p30" not in props and "rank_pct" not in props and props["risk_band"] in {"top1", "top5", "top10", "rest"}
+    assert "rank_pct" not in props and "risk_band" not in props and 0 <= props["urgency"] <= 100
+    assert set(gj["meta"]["bands"]) == {"critical", "high", "prevention", "monitor"}
     one = app.get(f"/segments/{props['segment_id']}", params={"city": "Brighton"}).json()
-    assert not {"p30", "p7", "rank_pct"} & set(one) and one["risk_label"] and "reasons" in one
+    assert not {"rank_pct", "risk_label"} & set(one) and "reasons" in one and one["wear_pct"] is None
+    assert one["band"] == props["band"] and one["urgency"] == props["urgency"]
+    assert one["urgency"] == pytest.approx(min(100, 100 * one["consequence"] * one["p30"]), abs=0.06)

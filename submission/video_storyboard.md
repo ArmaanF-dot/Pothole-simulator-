@@ -73,10 +73,10 @@ as inputs (risk model `risk@2026-10-18T07:20` for Southampton and Brighton, plan
 
 1. In the header, **City** dropdown: choose **Brighton**. The title changes to "Brighton & Hove highways · inspection
    list"; the left panel says "Brighton: inspection list (real data)" with the **100% real inputs** badge.
-2. Click the **Prevention plan** tab: "Brighton inspection list: ranked by risk from real FixMyStreet reports. No wear
+2. Click the **Prevention plan** tab: "Brighton inspection list: ranked by urgency from real FixMyStreet reports. No wear
    model for Brighton, so treatments are chosen on inspection." 55 segments: 5 with an open report in the last 120 days,
-   then the top 50 by risk.
-3. Under **Open reports (inspect first)**, click row 1, **Tisbury Road** (Central Hove), **Top 5%**: open report
+   then the top 50 by urgency.
+3. Under **Open reports (inspect first)**, click row 1, **Tisbury Road** (Central Hove), urgency **28**: open report
    2026-09-11 "Large pothole, & degraded road surface"; reasons "21 bus routes use this road", "long segment (160 m)",
    "road dug up 3x in the last 2 years (Street Manager)". All real.
 4. Say: "Southampton's council repair history isn't public, so it's a labelled stand-in; in Brighton, where the real

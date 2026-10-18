@@ -263,7 +263,7 @@ Brighton map/inspection list carry the display name in `name`.
 | weather_multiplier | float | risk_latest, risk_brighton | ward-week weather multiplier applied to the yearly risk; 1.0 for Brighton |
 | p_report_year | float 0–1 | risk_latest, risk_brighton | real-label model's yearly probability of a FixMyStreet report on the segment |
 | lambda_year | float ≥ 0 | risk_latest, risk_brighton | expected potholes a year = risk share × city total (Southampton FOI 2025; Brighton assumed, see `scale_source`) |
-| rank_pct | float 0–1 | risk_latest, risk_brighton | within-city percentile of `p_report_year` (Brighton bands: ≥0.99 top 1%, ≥0.95 top 5%, ≥0.90 top 10%) |
+| rank_pct | float 0–1 | risk_latest, risk_brighton | within-city percentile of `p_report_year` (not shown on the page) |
 | inputs_mock | bool | all three | true only if lane A inputs were mocked |
 | as_of | str | all three | `YYYY-MM-DD`, Monday the forecast weeks follow |
 | city | str | risk_brighton | `Brighton` |
@@ -300,12 +300,14 @@ preventive_avoided_per_gbp`. `outputs/prevention_plan_worth_treating_<as_of>.csv
 - `GET /plan/inspection?city=Brighton&top_n=50` → `{city, header, badge, sections, count, open_report_rows, top_n,
   window_days, model_version, trained_on, uses_synthetic, history_source, as_of, path, rows}`.
   `sections`: `[{key: "open", label: "Open reports (inspect first)", count, note}, {key: "risk", label: "Highest predicted risk", count, note}]`.
-  Each row: `rank (int), section ("open"|"risk"), segment_id, name (section 13), ward, highway, risk_band
-  ("top1"|"top5"|"top10"|"rest"), risk_label, reasons (list of str), action ("Inspect"), open_report (bool),
-  open_reports ([{id, reported_at, title}]), history_source, uses_synthetic (bool)`. No p30, treatment or £ fields.
+  Each row: `rank (int), section ("open"|"risk"), segment_id, name (section 13), ward, highway, urgency (0-100),
+  band (section 9 bands), p30, consequence_text, reasons (list of str), action ("Inspect"), open_report (bool),
+  open_reports ([{id, reported_at, title}]), history_source, uses_synthetic (bool)`. No treatment or £ fields.
+  Urgency is Southampton's formula without the wear term (no resurfacing history): `100 * min(1, C * P30)`, with the
+  same consequence weights C and band cut-offs. Both sections are sorted by urgency.
   400 for the home city (use `/plan/prevention`).
 - `GET /triage/city?city=Brighton` → the triage cache (section 18); 404 if not built.
-- `GET /segments/{id}?city=Brighton` → card with `risk_band, risk_label, reasons, badge, note` (no p30 or rank numbers).
+- `GET /segments/{id}?city=Brighton` → card with `urgency, band, p7, p30, consequence, consequence_text, wear_pct (null), reasons, badge, note`.
 
 ## 18. Triage caches: `outputs/lane_c/triage_<city>.json` (lane C writes with `python -m roadsense.agent.city_triage <city>`)
 Read-only triage for a map-only city, so the demo never waits on live Gemini. Only Brighton is built on main;
@@ -318,7 +320,7 @@ Southampton's triage is live (`POST /reports`) and its queue lives in `outputs/l
 | reports[].reported_at, lat, lon, title | str, float, float, str | title redacted (no names, house numbers or postcodes) |
 | reports[].category, method, model | str, str, str or null | category ∈ {`pothole`, `streetlight`, `other`} |
 | reports[].segment_id, segment_name, ward, snap_m | str or null, str or null, str or null, float or null | null when not within 30 m of a council road |
-| reports[].risk_band, risk_label, rank_pct | str or null, str or null, float or null | from `risk_<city>_latest.parquet` |
+| reports[].risk_band, urgency | str or null, float or null | band and urgency of the snapped segment; the API refreshes both from the current scores |
 | reports[].merged_into, status | str or null, str | status ∈ {`triaged`, `merged`, `not on a council road`} |
 
 ## 19. Lane B model and evaluation files (`data/models/`, `reports/`)

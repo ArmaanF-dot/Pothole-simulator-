@@ -127,14 +127,11 @@ function renderPlanRows() {
 }
 
 const otherCity = () => state.city && state.city !== state.homeCity;
-const LEGEND = { home: ["Critical 90+", "High 70-89", "Prevention 40-69", "Monitor"],
-  other: ["Top 1% risk in city", "Top 5%", "Top 10%", "Lower risk"] };
 
 async function loadMap() {
   const tok = state.mapTok = (state.mapTok || 0) + 1;  // a later loadMap (city switch) makes this one stale
   const gj = await api("/segments?" + qs(otherCity() ? { city: state.city } : { ward: state.ward, scenario: state.scenario }));
   if (tok !== state.mapTok) return null;
-  document.querySelectorAll(".legend b.lg").forEach((el, i) => el.textContent = LEGEND[otherCity() ? "other" : "home"][i]);
   const src = state.map.getSource("segments");
   if (src) src.setData(gj); else {
     state.map.addSource("segments", { type: "geojson", data: gj });
@@ -203,8 +200,11 @@ async function showCitySegment(id) {
   catch (e) { if (c === state.city) detail(`<h3>Road not available</h3><p class="small muted">${esc(e.message)}</p>`); return; }
   if (c !== state.city) return;  // the city changed while this was loading
   detail(`<h3>${esc(s.name)}</h3><div class="muted small">${esc(s.segment_id)} · ${esc(s.highway)} · ${esc(s.ward)} · ${esc(s.city)}</div>
-    <p><span class="vb ${s.risk_band === "rest" ? "pay" : "must"}">${esc(s.risk_label)}</span> ${badge(s.badge, s.badge.startsWith("100%") ? "real" : "")}</p>
-    <div class="kv"><div>Risk band</div><div>${esc(s.risk_label)} <span class="small muted">(rank within ${esc(s.city)})</span></div>
+    <p><span class="u ${s.band}">${fmt(s.urgency, 0)}</span> ${esc(s.band)} ${badge(s.badge, s.badge.startsWith("100%") ? "real" : "")}</p>
+    <div class="kv">
+      <div>Wear</div><div class="small muted">No resurfacing history for ${esc(s.city)}, so no wear term: urgency is P30 × consequence</div>
+      <div>Risk P7 / P30</div><div>${fmt(s.p7)} / ${fmt(s.p30)}</div>
+      <div>Consequence</div><div>×${fmt(s.consequence, 2)} ${esc(s.consequence_text)}</div>
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
       <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} reports · history ${esc(s.history_source)}</div>
       ${ctxRows(s.context)}</div>
@@ -352,7 +352,7 @@ async function loadCityTriage(c) {
     No work orders: ${esc(c)} is map only.</p>` + (t.reports.map((w) => `<div class="card ${w.status === "merged" ? "merged" : ""}">
     <div><span class="status">${esc(w.status)}</span> · <b>${esc(w.category)}</b> (${esc(w.method)}${w.model ? ", " + esc(w.model) : ""})</div>
     <div>${esc(w.title)} <span class="muted small">reported ${esc(w.reported_at)} · ${esc(w.report_id)}</span></div>
-    <div class="small">${w.segment_id ? `Segment <a href="#" onclick="showCitySegment('${esc(w.segment_id)}');return false">${esc(w.segment_name)}</a> (${fmt(w.snap_m, 0)} m) · ${esc(w.risk_label || "")}` : "Not within 30 m of a council road"}</div>
+    <div class="small">${w.segment_id ? `Segment <a href="#" onclick="showCitySegment('${esc(w.segment_id)}');return false">${esc(w.segment_name)}</a> (${fmt(w.snap_m, 0)} m)${w.urgency != null ? ` · urgency <span class="u ${esc(w.risk_band)}">${fmt(w.urgency, 0)}</span>` : ""}` : "Not within 30 m of a council road"}</div>
     ${w.merged_into ? `<div class="small">Merged into ${esc(w.merged_into)}: same defect within 15 m and 14 days</div>` : ""}</div>`).join("")
     || `<p class="muted">No open reports in the window.</p>`);
 }
@@ -362,14 +362,13 @@ async function loadInspection(c) {
   const p = await api("/plan/inspection?" + qs({ city: c }));
   $("#inspect-head").innerHTML = `<b>${esc(p.header)}</b> ${badge(p.badge, p.badge.startsWith("100%") ? "real" : "")}<br>
     <span class="small">${p.count} segments: ${p.open_report_rows} with an open FixMyStreet report in the last ${p.window_days} days (first),
-    then the top ${p.top_n} by risk rank in ${esc(c)}.</span>`;
-  const BAND = { top1: "critical", top5: "high", top10: "prevention" };
+    then the top ${p.top_n} by urgency in ${esc(c)}.</span>`;
   const row = (r) => `<tr data-id="${esc(r.segment_id)}">
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         ${r.open_report ? ` <span class="vb must">open report</span><div class="reasons">${r.open_reports.map((o) => `${esc(o.reported_at)}: ${esc(o.title)}`).join(" · ")}</div>` : ""}
         <div class="reasons" title="${esc(r.reasons.join(" · "))}">${esc(r.reasons[0] || "")}</div>${ctxTags(r.context)}</td>
-      <td><span class="u ${BAND[r.risk_band] || "monitor"}">${esc(r.risk_label)}</span></td>
+      <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30)}</div></td>
       <td>${esc(r.action)}</td></tr>`;
   $("#inspect-rows").innerHTML = p.sections.filter((s) => s.count).map((s) =>
     `<tr class="section"><th colspan="4">${esc(s.label)} <span class="muted small">${s.count} · ${esc(s.note)}</span></th></tr>`
@@ -406,7 +405,7 @@ async function setCity(c) {
   if (other) {
     const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
     note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
-      <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
+      <span class="small">Roads coloured by urgency on Southampton's bands, from P30 and consequence (no wear model for ${esc(c)}; model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
       The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
       Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;
   }

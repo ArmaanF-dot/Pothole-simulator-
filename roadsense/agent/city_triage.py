@@ -81,9 +81,8 @@ def run(cfg: dict | None = None, city: str = "Brighton", root: Path | None = Non
             "title": str(r.title), "category": cat, "method": method, "model": model,
             "segment_id": s["segment_id"] if s is not None else None, "segment_name": s["name"] if s is not None else None,
             "ward": s["ward"] if s is not None else None, "snap_m": round(float(d), 1) if on_road else None,
-            "risk_band": s["risk_band"] if s is not None else None,
-            "risk_label": view.segment(s["segment_id"])["risk_label"] if s is not None else None,
-            "rank_pct": float(s["rank_pct"]) if s is not None and np.isfinite(s["rank_pct"]) else None,
+            "risk_band": s["band"] if s is not None else None,
+            "urgency": float(s["urgency"]) if s is not None and np.isfinite(s["urgency"]) else None,
             "merged_into": merged,
             "status": "merged" if merged else ("not on a council road" if not on_road else "triaged"),
         })

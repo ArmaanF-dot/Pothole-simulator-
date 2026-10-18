@@ -260,7 +260,7 @@ def test_triage_caches():
 
 
 def test_brighton_inspection_rows():
-    """schemas.md section 17: inspection rows are real-only, open reports first, no p30 or money."""
+    """schemas.md section 17: inspection rows are real-only, open reports first, urgency but no money."""
     if not os.path.exists(os.path.join(OUT, "risk_brighton_latest.parquet")):
         pytest.skip("no Brighton risk file")
     from roadsense.api.cities import CityView
@@ -269,10 +269,10 @@ def test_brighton_inspection_rows():
     view = CityView(cfg, "Brighton")
     out = view.inspection_list(pd.DataFrame(), cfg, top_n=50)
     assert [s["key"] for s in out["sections"]] == ["open", "risk"]
-    row_keys = {"rank", "section", "segment_id", "name", "ward", "highway", "risk_band", "risk_label", "reasons", "action",
+    row_keys = {"rank", "section", "segment_id", "name", "ward", "highway", "urgency", "band", "p30", "reasons", "action",
                 "open_report", "open_reports", "history_source", "uses_synthetic"}
     for r in out["rows"]:
-        assert row_keys <= set(r) and not ({"p30", "p7", "treatment", "cost_planned_gbp"} & set(r))
+        assert row_keys <= set(r) and not ({"risk_label", "treatment", "cost_planned_gbp"} & set(r))
         assert isinstance(r["rank"], int) and isinstance(r["reasons"], list) and isinstance(r["open_report"], bool)
-        assert r["risk_band"] in {"top1", "top5", "top10", "rest"} and r["action"] == "Inspect"
+        assert r["band"] in {"critical", "high", "prevention", "monitor"} and 0 <= r["urgency"] <= 100 and r["action"] == "Inspect"
         assert r["history_source"] == "real" and r["uses_synthetic"] is False

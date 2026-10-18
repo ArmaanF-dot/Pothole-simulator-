@@ -1,8 +1,9 @@
 """Map-only view of a second city (Brighton) from lane B's real-label risk (outputs/risk_<city>_latest.parquet).
 
-The plan, lights and triage stay Southampton only. Segments are coloured by their risk rank within the
-city (top 1%, 5%, 10%), not by Southampton's urgency bands: there is no wear or consequence data for the
-second city, so urgency would not be comparable.
+The plan, lights and triage stay Southampton only. Segments get the same 0-100 urgency and bands as
+Southampton (roadsense.prevent.urgency): P30 from the real-label model times the same consequence weights.
+There is no resurfacing history (so no wear model) for the second city, so the wear term is left out and
+P30 carries its weight: urgency = 100 * min(1, C * P30).
 """
 from __future__ import annotations
 
@@ -12,9 +13,9 @@ import numpy as np
 import pandas as pd
 
 from roadsense.prevent import inputs as I
+from roadsense.prevent import urgency as U
 
-RANK_BANDS = [(0.99, "top1"), (0.95, "top5"), (0.90, "top10")]
-RANK_LABEL = {"top1": "Top 1% risk in the city", "top5": "Top 5%", "top10": "Top 10%", "rest": "Lower risk"}
+CONSEQUENCE_COLS = ["bus_stop", "bus_routes", "cycle_route", "near_school_hospital"]
 
 
 def available(cfg: dict, root: Path | None = None) -> list[str]:
@@ -49,13 +50,16 @@ class CityView:
                 break
         if seg is None:
             raise FileNotFoundError("segments.parquet")
-        cols = [c for c in ["segment_id", "name", "ref", "highway", "ward", "geometry", "lat", "lon", "owner"] if c in seg]
+        cols = [c for c in ["segment_id", "name", "ref", "highway", "ward", "geometry", "lat", "lon", "owner",
+                            *CONSEQUENCE_COLS] if c in seg]
         df = seg[cols].merge(risk.drop(columns=[c for c in ["ward"] if c in risk]), on="segment_id", how="inner")
         df = df.reset_index(drop=True)
         df["name"] = I.display_names(df)
-        pct = df["rank_pct"] if "rank_pct" in df and df["rank_pct"].notna().any() else df["p30"].rank(pct=True)
-        df["rank_pct"] = pct.astype(float)
-        df["risk_band"] = np.select([df["rank_pct"] >= t for t, _ in RANK_BANDS], [b for _, b in RANK_BANDS], "rest")
+        df["consequence"], df["consequence_text"] = U.consequence(df, cfg)
+        # Southampton's formula with no wear term: P30 takes the wear weight too (w_p30 + w_wear = 1)
+        w = cfg["urgency"]["w_p30"] + cfg["urgency"]["w_wear"]
+        df["urgency"] = np.round(100 * np.minimum(1, df["consequence"] * w * df["p30"].astype(float)), 1)
+        df["band"] = U.band(df["urgency"], cfg)
         self.df = df.reset_index(drop=True)
         self._geom = {sid: [[round(x, 6), round(y, 6)] for x, y in I._coords(g)]
                       for sid, g in zip(self.df["segment_id"], self.df["geometry"])}
@@ -69,15 +73,13 @@ class CityView:
 
     def geojson(self) -> dict:
         feats = []
-        # bands and reasons only: no P30 or rank numbers for the second city (map view, not a forecast)
-        for r in self.df[["segment_id", "name", "ward", "highway", "risk_band"]].to_dict("records"):
+        for r in self.df[["segment_id", "name", "ward", "highway", "band", "urgency"]].to_dict("records"):
             r = {k: (None if isinstance(v, float) and not np.isfinite(v) else v) for k, v in r.items()}
-            r["band"] = {"top1": "critical", "top5": "high", "top10": "prevention"}.get(r["risk_band"], "monitor")
             feats.append({"type": "Feature", "properties": r,
                           "geometry": {"type": "LineString", "coordinates": self._geom.get(r["segment_id"], [])}})
         return {"type": "FeatureCollection", "features": feats,
                 "meta": {"city": self.city, "count": len(feats), "badge": self.badge(), **self.meta,
-                         "bands": {b: int((self.df["risk_band"] == b).sum()) for b in ["top1", "top5", "top10", "rest"]}}}
+                         "bands": {b: int((self.df["band"] == b).sum()) for b in U.BAND_ORDER}}}
 
     def segment(self, sid: str) -> dict | None:
         r = self.df[self.df["segment_id"] == sid]
@@ -87,18 +89,19 @@ class CityView:
         clean = lambda v: None if v is None or (isinstance(v, float) and not np.isfinite(v)) else (
             v.item() if hasattr(v, "item") else v)
         return {"city": self.city, "segment_id": sid, "name": r["name"], "ward": r.get("ward"), "highway": r["highway"],
-                "risk_band": r["risk_band"], "risk_label": RANK_LABEL[r["risk_band"]],
+                "urgency": clean(r["urgency"]), "band": r["band"], "p7": clean(r["p7"]), "p30": clean(r["p30"]),
+                "consequence": clean(r["consequence"]), "consequence_text": r["consequence_text"], "wear_pct": None,
                 "reasons": [x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str)],
                 "badge": self.badge(), **self.meta,
                 "note": "Inspection list and read-only triage from real reports. Streetlights are Southampton only."}
 
-    INSPECT_HEADER = ("{city} inspection list: ranked by risk from real FixMyStreet reports. "
+    INSPECT_HEADER = ("{city} inspection list: ranked by urgency from real FixMyStreet reports. "
                       "No wear model for {city}, so treatments are chosen on inspection.")
 
     def inspection_list(self, open_reports: pd.DataFrame, cfg: dict, top_n: int = 50) -> dict:
         """Segments to inspect: any council segment with an open FixMyStreet report in the open window
-        (first, marked "open report"), then the top_n by within-city risk rank. Bands and reasons only,
-        like the map card: no P30, no treatment, no money (no wear or cost model for this city)."""
+        (first, marked "open report"), then the top_n by urgency. Urgency, band, P30 and reasons like the
+        map card; no treatment or money (no wear or cost model for this city)."""
         from roadsense.prevent.inputs import SegmentIndex
         df = self.df
         owner = df["owner"] if "owner" in df else pd.Series("council", index=df.index)
@@ -112,20 +115,21 @@ class CityView:
                     reports.setdefault(df.iloc[j]["segment_id"], []).append(
                         {"id": int(r.id), "reported_at": str(r.reported_at)[:10], "title": str(r.title)})
         c = df[council]
-        opened = c[c["segment_id"].isin(reports)].sort_values("rank_pct", ascending=False)
-        rest = c[~c["segment_id"].isin(reports)].sort_values("rank_pct", ascending=False).head(top_n)
+        opened = c[c["segment_id"].isin(reports)].sort_values(["urgency", "p30"], ascending=False)
+        rest = c[~c["segment_id"].isin(reports)].sort_values(["urgency", "p30"], ascending=False).head(top_n)
         rows = []
         for k, r in enumerate(pd.concat([opened, rest]).to_dict("records"), start=1):
             reps = sorted(reports.get(r["segment_id"], []), key=lambda x: x["reported_at"], reverse=True)
             rows.append({"rank": k, "section": "open" if reps else "risk",
                          "segment_id": r["segment_id"], "name": r["name"], "ward": r.get("ward"),
-                         "highway": r["highway"], "risk_band": r["risk_band"], "risk_label": RANK_LABEL[r["risk_band"]],
+                         "highway": r["highway"], "urgency": float(r["urgency"]), "band": r["band"],
+                         "p30": float(r["p30"]), "consequence_text": r["consequence_text"],
                          "reasons": [x for x in [r.get("reason_1"), r.get("reason_2"), r.get("reason_3")] if isinstance(x, str)],
                          "action": "Inspect", "open_report": bool(reps), "open_reports": reps,
                          "history_source": self.meta["history_source"], "uses_synthetic": bool(self.meta["uses_synthetic"])})
         sections = [{"key": "open", "label": "Open reports (inspect first)", "count": len(opened),
-                     "note": "ranked by predicted risk within the section"},
-                    {"key": "risk", "label": "Highest predicted risk", "count": len(rest), "note": f"top {top_n} by risk rank"}]
+                     "note": "ranked by urgency within the section"},
+                    {"key": "risk", "label": "Highest predicted risk", "count": len(rest), "note": f"top {top_n} by urgency"}]
         return {"city": self.city, "header": self.INSPECT_HEADER.format(city=self.city), "badge": self.badge(),
                 "sections": sections,
                 "count": len(rows), "open_report_rows": len(opened), "top_n": top_n,

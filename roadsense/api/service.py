@@ -144,7 +144,17 @@ class Service:
     def city_triage(self, city: str) -> dict | None:
         """Cached read-only triage for a map-only city (python -m roadsense.agent.city_triage <city>)."""
         from roadsense.agent.city_triage import load_cached
-        return load_cached(self.cfg, city, self.root)
+        t = load_cached(self.cfg, city, self.root)
+        if t is None:
+            return None
+        # urgency and band from the current scores, not whatever the cache was built with
+        df = self.city_view(city).df.set_index("segment_id")
+        for r in t["reports"]:
+            r.pop("risk_label", None), r.pop("rank_pct", None)
+            sid = r.get("segment_id")
+            if sid in df.index:
+                r["risk_band"], r["urgency"] = df.at[sid, "band"], _clean(df.at[sid, "urgency"])
+        return t
 
     def other_cities(self) -> list[str]:
         from roadsense.api.cities import available
