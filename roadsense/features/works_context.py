@@ -32,6 +32,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 PROC = os.path.join(ROOT, "data", "processed")
 SITE_M, WORK_M, CON_YEARS = 150.0, 20.0, 3
 FIRST_FULL_WORKS_YEAR = 2021        # Street Manager archive starts July 2020
+LINKED_COLS = ["city", "permit_reference", "promoter", "activity_type", "work_category", "works_location_type",
+               "street_name", "actual_end", "year", "carriageway", "segment_id", "snap_m", "source_month"]
 YEARLY = ["con_sites_3y", "con_dwellings_3y", "uw_carriageway_1y", "uw_any_1y", "uw_carriageway_2y"]
 
 
@@ -86,9 +88,10 @@ def snap_works(seg: pd.DataFrame, works: pd.DataFrame, radius_m: float = WORK_M)
     return w
 
 
-def load_linked(root: str = ROOT) -> tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
-    """(sites, site_segments, works_segments), each None when missing."""
-    p = os.path.join(root, "data", "processed")
+def load_linked(root: str = ROOT, processed_dir: str | None = None) -> tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
+    """(sites, site_segments, works_segments), each None when missing. processed_dir overrides <root>/data/processed
+    (the app passes the live refresh build's folder)."""
+    p = processed_dir or os.path.join(root, "data", "processed")
     rd = lambda n: pd.read_csv(os.path.join(p, n), dtype={"segment_id": str}) if os.path.exists(os.path.join(p, n)) else None
     wp = os.path.join(p, "works_segments.parquet")
     works = pd.read_parquet(wp) if os.path.exists(wp) else None
@@ -179,20 +182,27 @@ def live_sites(city: str, as_of, sites) -> list[dict]:
     return [{**_site(r), "lon": float(r.lon), "lat": float(r.lat)} for r in _live(sites, city, pd.Timestamp(as_of)).itertuples()]
 
 
+def relink_sites(proc_dir: str = PROC) -> int:
+    """site_segments.csv from construction_sites.csv (cheap: a few hundred sites)."""
+    seg = pd.read_parquet(os.path.join(proc_dir, "segments.parquet"), columns=["segment_id", "city", "geometry", "owner", "highway"])
+    seg = seg[(seg["owner"] != "national_highways") & (seg["highway"] != "motorway")]
+    sites, _, _ = load_linked(processed_dir=proc_dir)
+    if sites is None:
+        return 0
+    L = link_sites(seg, sites)
+    L.to_csv(os.path.join(proc_dir, "site_segments.csv"), index=False)
+    return len(L)
+
+
 def main():
     seg = pd.read_parquet(os.path.join(PROC, "segments.parquet"), columns=["segment_id", "city", "geometry", "owner", "highway"])
     seg = seg[(seg["owner"] != "national_highways") & (seg["highway"] != "motorway")]
-    sites, _, _ = load_linked()
-    if sites is not None:
-        L = link_sites(seg, sites)
-        L.to_csv(os.path.join(PROC, "site_segments.csv"), index=False)
-        print(f"site_segments: {len(L)} links, {L['segment_id'].nunique()} segments, {L['reference'].nunique()} sites")
+    n = relink_sites()
+    print(f"site_segments: {n} links")
     wp = os.path.join(PROC, "street_works.csv")
     if os.path.exists(wp):
         w = snap_works(seg, pd.read_csv(wp, dtype=str))
-        keep = ["city", "permit_reference", "promoter", "activity_type", "work_category", "works_location_type",
-                "street_name", "actual_end", "year", "carriageway", "segment_id", "snap_m"]
-        w = w[keep].astype({"year": "Int64", "carriageway": bool})
+        w = w[LINKED_COLS].astype({"year": "Int64", "carriageway": bool})
         w.to_parquet(os.path.join(PROC, "works_segments.parquet"), index=False)
         print(f"works_segments: {len(w)} works, {w['segment_id'].notna().mean():.0%} on a council segment within {WORK_M:.0f} m")
 

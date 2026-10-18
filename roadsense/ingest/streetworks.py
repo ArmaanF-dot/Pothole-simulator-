@@ -161,6 +161,62 @@ def all_months(until: tuple[int, int] | None = None) -> list[str]:
     return out
 
 
+def latest_months(have: set[str], now: datetime | None = None, max_new: int = 2) -> list[str]:
+    """Months after the newest one we have, up to last month, oldest first (at most max_new per run)."""
+    if not have:
+        return []
+    now = now or datetime.now(timezone.utc)
+    last = max(have)
+    y, m = map(int, last.split("-"))
+    out = []
+    end = (now.year, now.month - 1) if now.month > 1 else (now.year - 1, 12)
+    while True:
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        if (y, m) > end:
+            break
+        out.append(f"{y}-{m:02d}")
+    return out[:max_new]
+
+
+def update_linked(proc_dir: str, now: datetime | None = None, max_new: int = 2, verbose: bool = True) -> dict:
+    """Daily refresh step: fetch any newly published month (DfT publishes the archive monthly), link its works to
+    segments and append them to <proc_dir>/works_segments.parquet. A month not published yet is skipped quietly."""
+    from roadsense.features import works_context as WC
+    wp = os.path.join(proc_dir, "works_segments.parquet")
+    if not os.path.exists(wp):
+        return {"skipped": "no works_segments.parquet to extend"}
+    store = pd.read_parquet(wp)
+    have = set(store["source_month"].dropna().unique()) if "source_month" in store else set()
+    todo = latest_months(have, now, max_new)
+    if not todo:
+        return {"new_months": [], "latest": max(have) if have else None}
+    seg = pd.read_parquet(os.path.join(proc_dir, "segments.parquet"), columns=["segment_id", "city", "geometry", "owner", "highway"])
+    seg = seg[(seg["owner"] != "national_highways") & (seg["highway"] != "motorway")]
+    tf = _bng_to_wgs84()
+    added, done = 0, []
+    for ym in todo:
+        y, m = map(int, ym.split("-"))
+        fd, tmp = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        try:
+            try:
+                fetch(URL.format(y=y, m=m), tmp, tries=1)
+            except Exception:  # noqa: BLE001 - 403/404 until DfT publishes the month
+                break
+            rows = month_rows(tmp, ym, tf)
+        finally:
+            os.remove(tmp)
+        w = WC.snap_works(seg, pd.DataFrame(rows, columns=COLS))
+        w = w[WC.LINKED_COLS].astype({"year": "Int64", "carriageway": bool})
+        store = pd.concat([store[store["source_month"] != ym], w], ignore_index=True)
+        store = store.sort_values("actual_end").drop_duplicates("permit_reference", keep="last")
+        added += len(w)
+        done.append(ym)
+    if done:
+        store.to_parquet(wp, index=False)
+    return {"new_months": done, "works_added": added, "latest": max(have | set(done))}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--months", nargs="*", help="yyyy-mm (default: every month since 2020-07 not yet fetched)")

@@ -190,7 +190,8 @@ def create_app(service: Service | None = None) -> FastAPI:
         from roadsense.features import works_context as WC
         s = svc()
         c = city or s.cfg["coverage"]["city"]
-        sites, _, _ = WC.load_linked(str(s.root))
+        from roadsense.prevent import inputs as I
+        sites, _, _ = WC.load_linked(processed_dir=str(I.resolve(s.cfg, "processed_dir", s.root)))
         as_of = s.risk_meta.get("as_of") if c == s.cfg["coverage"]["city"] else s.city_view(c).meta.get("as_of")
         return {"city": c, "as_of": as_of, "years": WC.CON_YEARS, "sites": WC.live_sites(c, as_of, sites)}
 

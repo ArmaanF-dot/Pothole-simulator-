@@ -96,14 +96,14 @@ def rows_for(city: str, ons: str, now: str) -> list[dict]:
     return out
 
 
-def city_bbox(city: str) -> tuple[float, float, float, float]:
-    seg = pd.read_parquet(os.path.join(ROOT, "data", "processed", "segments.parquet"), columns=["city", "lat", "lon"])
+def city_bbox(city: str, seg_path: str | None = None) -> tuple[float, float, float, float]:
+    seg = pd.read_parquet(seg_path or os.path.join(ROOT, "data", "processed", "segments.parquet"), columns=["city", "lat", "lon"])
     s = seg[seg["city"] == city]
     return float(s["lat"].min()), float(s["lon"].min()), float(s["lat"].max()), float(s["lon"].max())
 
 
-def osm_rows(city: str, now: str) -> list[dict]:
-    s, w, n, e = city_bbox(city)
+def osm_rows(city: str, now: str, seg_path: str | None = None) -> list[dict]:
+    s, w, n, e = city_bbox(city, seg_path)
     q = (f'[out:json][timeout:120];(way["landuse"="construction"]({s},{w},{n},{e});'
          f'relation["landuse"="construction"]({s},{w},{n},{e}););out center tags;')
     body = urllib.parse.urlencode({"data": q}).encode()
@@ -133,12 +133,26 @@ def osm_rows(city: str, now: str) -> list[dict]:
     return out
 
 
-def main():
+def build(out: str = OUT, seg_path: str | None = None, verbose: bool = True) -> pd.DataFrame:
+    """Fetch both sources and write `out`. A source that fails keeps its rows from the previous file, so one
+    unreachable server never empties the list (the daily refresh calls this)."""
     now = datetime.now(timezone.utc).isoformat(timespec="minutes")
-    rows = [r for c, ons in CITIES.items() for r in rows_for(c, ons, now)]
-    rows += [r for c in CITIES for r in osm_rows(c, now)]
-    df = pd.DataFrame(rows, columns=COLS).drop_duplicates(["city", "reference"], keep="last")
-    df.to_csv(OUT, index=False)
+    old = pd.read_csv(out) if os.path.exists(out) else pd.DataFrame(columns=COLS)
+    frames = []
+    try:
+        frames.append(pd.DataFrame([r for c, ons in CITIES.items() for r in rows_for(c, ons, now)], columns=COLS))
+    except Exception as e:  # noqa: BLE001
+        print(f"  brownfield registers unreachable ({e}); keeping the previous rows")
+        frames.append(old[old["source"] == "brownfield_register"])
+    osm = [r for c in CITIES for r in osm_rows(c, now, seg_path)]
+    frames.append(pd.DataFrame(osm, columns=COLS) if osm else old[old["source"] == "osm_construction"])
+    df = pd.concat([f for f in frames if len(f)], ignore_index=True).drop_duplicates(["city", "reference"], keep="last")
+    df.to_csv(out, index=False)
+    return df
+
+
+def main():
+    df = build()
     for c, g in df[df["source"] == "brownfield_register"].groupby("city"):
         print(f"{c}: {len(g)} sites, {int(g['permission_status'].eq('permissioned').sum())} with permission, "
               f"{int(g['public_land'].sum())} on public land, {int(g['end_date'].notna().sum())} off the register")
