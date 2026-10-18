@@ -50,7 +50,7 @@ async function loadPlan() {
   const p = await api("/plan/prevention?" + qs({ ward: state.ward, scenario: state.scenario,
     forecast_as_of: new URLSearchParams(location.search).get("forecast_as_of") }));
   const asOf = p.as_of ? new Date(p.as_of + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "unknown";
-  $("#plan-head").innerHTML = `${p.count} segments to treat${state.ward ? " in " + esc(state.ward) : ""}, week of ${esc(asOf)} (as_of ${esc(p.as_of)}).`
+  $("#plan-head").innerHTML = `<span class="lead">${p.count} segments to treat${state.ward ? " in " + esc(state.ward) : ""}, week of ${esc(asOf)}</span> (as_of ${esc(p.as_of)}).`
     + (p.provisional ? " " + badge("PROVISIONAL", "prov") : "")
     + (p.scenario ? ` What-if <b>${esc(p.scenario)}</b> (${esc(p.scenario_method)}).` : "")
     + (p.model_label ? ` Model ${esc(p.model_version || "")}: <b>${esc(p.model_label)}</b>.` : "")
@@ -132,7 +132,7 @@ async function loadMap() {
   return gj;
 }
 
-function detail(html) { const d = $("#detail"); d.innerHTML = `<button class="close" onclick="this.parentNode.classList.add('hidden')">×</button>` + html; d.classList.remove("hidden"); }
+function detail(html) { const d = $("#detail"); d.innerHTML = `<button class="close" aria-label="Close" onclick="this.parentNode.classList.add('hidden')">×</button>` + html; d.classList.remove("hidden"); }
 
 async function locate(lat, lon) {
   if (otherCity()) return;  // /locate covers the home city only
@@ -230,7 +230,7 @@ async function loadQueue() {
       segment_id: w.segment_id, lamp_id: w.lamp_id, urgency: w.urgency, summary: w.summary, recommended_action: w.recommended_action,
       duplicate_of: w.merged_into }, null, 1))}</pre></details>
     ${w.status === "pending_approval" ? `<button class="primary" onclick="approve('${esc(w.report_id)}')">Approve work order</button>
-      <button onclick="reject('${esc(w.report_id)}')">Reject</button>` : ""}</div>`).join("") || `<p class="muted">No reports triaged yet.</p>`;
+      <button onclick="reject('${esc(w.report_id)}')">Reject</button>` : ""}</div>`).join("") || `<p class="empty">No reports triaged yet.</p>`;
 }
 
 window.approve = async (id) => { const r = await post(`/workorders/${encodeURIComponent(id)}/approve`, { officer: "officer" });
@@ -240,6 +240,7 @@ window.showSegment = showSegment;
 
 async function triage(fmsId) {
   const btns = document.querySelectorAll("#triage-form button"); btns.forEach((b) => b.disabled = true);
+  $("#triage-err").classList.add("hidden");
   try {
     const body = { fms_id: Number(fmsId) };
     const f = $("#photo").files[0];
@@ -247,12 +248,12 @@ async function triage(fmsId) {
       body.image_b64 = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.readAsDataURL(f); }); }
     await post("/reports", body); state.lastFms = fmsId; $("#photo").value = ""; await loadQueue();
   }
-  catch (e) { alert(e.message); } finally { btns.forEach((b) => b.disabled = false); }
+  catch (e) { $("#triage-err").textContent = "Triage failed: " + e.message; $("#triage-err").classList.remove("hidden"); } finally { btns.forEach((b) => b.disabled = false); }
 }
 
 async function loadLights() {
   const l = await api("/lights?" + qs({ ward: state.ward, due: !$("#dark-only").checked, dark: $("#dark-only").checked, limit: 200 }));
-  $("#lights-head").innerHTML = `${l.count_due} lamps due for replacement within ${l.due_days} days, ${l.count_currently_dark} currently dark, as of ${esc(l.as_of)} ${badge(l.kind === "mock" ? "MOCK" : "SYNTHETIC", l.kind === "mock" ? "mock" : "")}. `
+  $("#lights-head").innerHTML = `<span class="lead">${l.count_due} lamps due for replacement within ${l.due_days} days, ${l.count_currently_dark} currently dark,</span> as of ${esc(l.as_of)} ${badge(l.kind === "mock" ? "MOCK" : "SYNTHETIC", l.kind === "mock" ? "mock" : "")}. `
     + `Report a faulty light on the <a href="${esc(l.official_report_url)}" target="_blank" rel="noopener">council's streetlight page</a>.`;
   $("#light-rows").innerHTML = l.lamps.map((x) => `<tr data-lat="${x.lat}" data-lon="${x.lon}"><td>${esc(x.lamp_id)}<div class="small muted">${esc(x.lamp_type)}</div></td>
     <td>${esc(x.name)}<div class="small muted">${esc(x.ward)}</div></td><td>${fmt(x.p_fail_90d)}</td>
@@ -273,10 +274,13 @@ async function refresh() {
   if (state.mapReady) state.map.resize();
 }
 
+// dim the base map in dark mode so the risk colours still read; the colours themselves never change
+const DARK = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
 function initMap() {
   state.map = new maplibregl.Map({ container: "map", center: [-1.40, 50.91], zoom: 12, style: {
     version: 8, sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256,
-      attribution: "© OpenStreetMap contributors" } }, layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.6 } }] } });
+      attribution: "© OpenStreetMap contributors" } }, layers: [{ id: "osm", type: "raster", source: "osm", paint: DARK ? { "raster-saturation": -0.85, "raster-brightness-max": 0.62, "raster-contrast": 0.1 }
+      : { "raster-saturation": -0.6 } }] } });
   return new Promise((res) => state.map.on("load", res));
 }
 
