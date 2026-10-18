@@ -41,14 +41,11 @@ class CityView:
                      "history_source": str(raw["history_source"].iloc[0]) if "history_source" in raw else None,
                      "as_of": str(raw["as_of"].iloc[0]) if "as_of" in raw else None, "path": I._rel(p, root)}
         risk = I.normalise_risk(raw)
-        seg = None
-        for d in [I.resolve(cfg, "processed_dir", root), I.resolve(cfg, "lane_c_copy_dir", root)]:
-            if (d / "segments.parquet").exists():
-                s = pd.read_parquet(d / "segments.parquet")
-                seg = s[s["city"] == city] if "city" in s else s
-                break
-        if seg is None:
+        sp = I.resolve(cfg, "processed_dir", root) / "segments.parquet"
+        if not sp.exists():
             raise FileNotFoundError("segments.parquet")
+        s = pd.read_parquet(sp)
+        seg = s[s["city"] == city] if "city" in s else s
         cols = [c for c in ["segment_id", "name", "ref", "highway", "ward", "geometry", "lat", "lon", "owner"] if c in seg]
         df = seg[cols].merge(risk.drop(columns=[c for c in ["ward"] if c in risk]), on="segment_id", how="inner")
         df = df.reset_index(drop=True)
@@ -57,8 +54,9 @@ class CityView:
         df["rank_pct"] = pct.astype(float)
         df["risk_band"] = np.select([df["rank_pct"] >= t for t, _ in RANK_BANDS], [b for _, b in RANK_BANDS], "rest")
         self.df = df.reset_index(drop=True)
-        self._geom = {sid: [[round(x, 6), round(y, 6)] for x, y in I._coords(g)]
-                      for sid, g in zip(self.df["segment_id"], self.df["geometry"])}
+        self._geom = {sid: [[round(x, 6), round(y, 6)] for x, y in c]
+                      for sid, c in zip(self.df["segment_id"], I.coords_many(self.df["geometry"]))}
+        self._index = None
 
     @property
     def real_inputs(self) -> bool:
@@ -99,13 +97,14 @@ class CityView:
         """Segments to inspect: any council segment with an open FixMyStreet report in the open window
         (first, marked "open report"), then the top_n by within-city risk rank. Bands and reasons only,
         like the map card: no P30, no treatment, no money (no wear or cost model for this city)."""
-        from roadsense.prevent.inputs import SegmentIndex
         df = self.df
         owner = df["owner"] if "owner" in df else pd.Series("council", index=df.index)
         council = ((owner != "national_highways") & (df["highway"] != "motorway")).values
         reports: dict[str, list] = {}
         if open_reports is not None and len(open_reports):
-            idx = SegmentIndex(df)
+            if self._index is None:
+                self._index = I.SegmentIndex(df)
+            idx = self._index
             for r in open_reports.itertuples():
                 j, d = idx.nearest(float(r.lon), float(r.lat), mask=council)
                 if j is not None and d <= cfg["triage"]["snap_radius_m"]:

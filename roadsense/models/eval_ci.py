@@ -62,11 +62,13 @@ def score_rows(booster, meta, rows: pd.DataFrame) -> np.ndarray:
     return booster.predict(X)
 
 
-def mean_capture(df: pd.DataFrame, s: np.ndarray) -> float:
+def mean_capture(df: pd.DataFrame | dict, s: np.ndarray) -> float:
+    """df: a DataFrame or a dict of arrays with year, n_reports and length_m."""
+    yr, n_rep, length = (np.asarray(df[c]) for c in ("year", "n_reports", "length_m"))
     caps = []
-    for y in sorted(df["year"].unique()):
-        m = (df["year"] == y).values
-        c = rr.capture_top_length(df[m], s[m])
+    for y in np.unique(yr):
+        m = yr == y
+        c = rr._capture(n_rep[m], length[m], s[m])
         if c == c:
             caps.append(c)
     return float(np.mean(caps)) if caps else float("nan")
@@ -81,9 +83,10 @@ def ward_bootstrap(df: pd.DataFrame, scores: dict, n: int = N_BOOT, seed: int = 
     point = {k: mean_capture(df, v) for k, v in scores.items()}
     rng = np.random.default_rng(seed)
     draws = {k: np.empty(n) for k in scores}
+    cols = {c: df[c].values for c in ("year", "n_reports", "length_m")}
     for b in range(n):
         idx = np.concatenate([rows_of[w] for w in rng.choice(uw, size=len(uw), replace=True)])
-        sub = df.iloc[idx].reset_index(drop=True)
+        sub = {c: v[idx] for c, v in cols.items()}
         for k, v in scores.items():
             draws[k][b] = mean_capture(sub, v[idx])
     ci = lambda v: [float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))]

@@ -54,7 +54,7 @@ def stage_configs(stage: Path, repo: Path) -> tuple[dict, dict, dict]:
     for k in ["synthetic_dir", "models_dir", "mock_dir", "reports_dir"]:
         cfg_m["paths"][k] = str(repo / cfg_m["paths"][k])
     cfg_c = copy.deepcopy(I.load_config(I.CONFIG_PATH, live=False))
-    for k in ["lane_c_copy_dir", "lane_b_mock_dir", "synthetic_dir", "models_dir", "state_dir", "reports_dir", "fms_all_csv"]:
+    for k in ["lane_b_mock_dir", "synthetic_dir", "models_dir", "state_dir", "reports_dir", "fms_all_csv"]:
         cfg_c["paths"][k] = str(repo / cfg_c["paths"][k])
     return cfg_a, cfg_m, cfg_c
 

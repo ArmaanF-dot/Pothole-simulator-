@@ -49,12 +49,6 @@ def to_lonlat(x, y):
 
 
 # --- inputs ------------------------------------------------------------------
-SEGMENT_COLS = ["segment_id", "osm_way_id", "name", "highway", "ward", "length_m", "geometry",
-                "lat", "lon", "bus_stop", "junction", "in_flood_area", "owner", "esal_day"]
-WEATHER_COLS = ["ward", "week_start", "rain_3d", "rain_7d", "rain_30d", "rain_90d", "hours_below_0_7d",
-                "freeze_thaw_14d", "freeze_thaw_30d", "rain_then_frost_7d", "hot_days_7d"]
-
-
 def _read_any(path: Path) -> pd.DataFrame:
     return pd.read_parquet(path) if path.suffix == ".parquet" else pd.read_csv(path)
 

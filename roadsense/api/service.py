@@ -73,6 +73,7 @@ class Service:
         self.queue: list[dict] = []
         self.outcomes: list[dict] = []
         self._scenarios: dict[str, pd.DataFrame] = {}
+        self._whatif_cache: dict = {}   # baseline forward rows shared by every scenario
         self._load_state()
         self.rescore()
 
@@ -121,7 +122,8 @@ class Service:
         if not scenario:
             return self.scored
         if scenario not in self._scenarios:
-            self._scenarios[scenario] = W.apply_scenario(self.risk, self.seg, scenario, self.cfg, root=self.root)
+            self._scenarios[scenario] = W.apply_scenario(self.risk, self.seg, scenario, self.cfg, root=self.root,
+                                                         cache=self._whatif_cache)
         if scenario not in self._scenario_scored:
             self._scenario_scored[scenario] = P.score(self.seg, self._scenarios[scenario], self.cfg, self.feedback,
                                                       confirmed=self.confirmed())
@@ -200,13 +202,12 @@ class Service:
                      ["wear_pct", "p30_w0", "p30_w1", "p30_w2", "p30_w3", "p30_peak", "p30_rise", "urgency_peak", "band_peak",
                       "consequence", "consequence_text", "treatment_cost_gbp", "reactive_cost_avoided_gbp",
                       "avoided_per_gbp", "esal_day", "traffic_note", "cracking", "weather_source", "as_of",
-                      "labels_synthetic", "history_source", "wear_synthetic", "input_source"])
-    SEG_COLS = DETAIL_FIELDS  # flat JSON (?format=json)
+                      "labels_synthetic", "history_source", "wear_synthetic", "input_source"])  # also ?format=json
 
     def _geometry(self, sid: str) -> dict:
         if not hasattr(self, "_geom"):
-            self._geom = {s: [[round(x, 6), round(y, 6)] for x, y in I._coords(g)]
-                          for s, g in zip(self.seg["segment_id"], self.seg["geometry"])}
+            self._geom = {s: [[round(x, 6), round(y, 6)] for x, y in c]
+                          for s, c in zip(self.seg["segment_id"], I.coords_many(self.seg["geometry"]))}
         return {"type": "LineString", "coordinates": self._geom.get(sid, [])}
 
     def segments(self, ward=None, band=None, scenario=None, geojson=True, limit=None, full=False) -> dict:
@@ -220,7 +221,7 @@ class Service:
             s = s.sort_values("urgency", ascending=False).head(int(limit))
         meta = {"count": len(s), "as_of": self.risk_meta.get("as_of"), "scenario": scenario, **self.badges()}
         if not geojson:
-            return {**meta, "segments": records(s, self.SEG_COLS)}
+            return {**meta, "segments": records(s, self.DETAIL_FIELDS)}
         cols = self.SEG_FIELDS + self.RISK_FIELDS + self.EXTRA_FIELDS if full else self.MAP_FIELDS
         feats = [{"type": "Feature", "properties": r, "geometry": self._geometry(r["segment_id"])} for r in records(s, cols)]
         return {"type": "FeatureCollection", "features": feats, "meta": meta}
@@ -313,7 +314,7 @@ class Service:
             L = L[L["currently_dark"]]
         L = L.sort_values("p_fail_90d", ascending=False).head(limit)
         open_lights = [q for q in self.queue if q["category"] == "streetlight" and q["status"] in ("pending_approval", "approved")]
-        return {"due_days": days, "count_due": due_n, "count_due_90d": due_n, "count_currently_dark": dark_n,
+        return {"due_days": days, "count_due": due_n,"count_currently_dark": dark_n,
                 "as_of": self.lights_meta.get("as_of"), "synthetic": True, "kind": self.lights_meta["kind"],
                 "open_streetlight_reports": open_lights,
                 "official_report_url": self.cfg["coverage"]["official_streetlight_url"],

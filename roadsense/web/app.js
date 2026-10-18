@@ -15,7 +15,7 @@ async function api(path, opts) {
 const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
 const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString();
 const wx = (s) => String(s || "").split(",").map((p) => p.split(":").pop()).filter(Boolean)
-  .map((v, i) => (i === 0 ? "this week " : `wk ${i} `) + v.replace("climatology_10y", "climatology").replace("observed", "observed")).join(", ");
+  .map((v, i) => (i === 0 ? "this week " : `wk ${i} `) + v.replace("climatology_10y", "climatology")).join(", ");
 const gbp = (x) => "£" + Number(x).toFixed(2);
 // Open-Meteo's terms require attribution wherever its weather data is shown
 const OPEN_METEO = `<a class="credit" href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a>`;
@@ -344,19 +344,21 @@ async function setCity(c) {
     ["segments", "open"].forEach((id) => state.map.getSource(id) && state.map.getSource(id).setData(empty));
     state.gj = null;
   }
-  if (other) {
-    const gjMeta = (await api("/segments?" + qs({ city: c }))).meta;
-    note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
-      <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
-      The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
-      Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;
-  }
+  let gj = null;
   if (state.mapReady) {
-    const gj = await loadMap();
+    gj = await loadMap();
     if (!gj) return;  // superseded by a later city switch
     const b = new maplibregl.LngLatBounds();
     gj.features.forEach((f) => f.geometry.coordinates.forEach((x) => b.extend(x)));
     if (!b.isEmpty()) state.map.fitBounds(b, { padding: 20, duration: 0 });
+  }
+  if (other) {  // the city note reuses the map's GeoJSON meta; it is fetched only when the map is not ready yet
+    const gjMeta = (gj || await api("/segments?" + qs({ city: c }))).meta;
+    if (c !== state.city) return;
+    note.innerHTML = `<b>${esc(c)}: inspection list (real data)</b> ${badge(gjMeta.badge, gjMeta.badge.startsWith("100%") ? "real" : "")}<br>
+      <span class="small">Roads coloured by risk rank within ${esc(c)} (model ${esc(gjMeta.model_version)}, trained on ${esc(gjMeta.trained_on)} reports).
+      The Prevention plan tab shows an inspection list from real reports; open FixMyStreet reports are on the map and in
+      Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;
   }
 }
 $("#city").onchange = (e) => setCity(e.target.value);
@@ -370,5 +372,6 @@ $("#dup-btn").onclick = () => triage(state.lastFms || $("#fms-pick").value);
 (async () => {
   await loadMeta();
   initMap().then(async () => { state.mapReady = true; await loadMap(); state.map.resize(); });
-  await Promise.all([refresh(), loadFms(), loadSources()]);
+  // meta is already loaded and the map loads itself when ready, so not refresh() (it would fetch both again)
+  await Promise.all([loadPlan(), loadQueue(), loadFms(), loadSources()]);
 })().catch((e) => { $("#stale").textContent = "Could not reach the RoadSense API: " + e.message; $("#stale").classList.remove("hidden"); });

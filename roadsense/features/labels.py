@@ -54,7 +54,7 @@ def labels(cfg, seg, snapped):
         t = pd.DataFrame([(sid, main, y) for sid, main in zip(s.segment_id, s.is_main_road) for y in years],
                          columns=["segment_id", "is_main_road", "year"])
         t.insert(0, "city", city)
-        t["n_reports"] = [counts.get((sid, y), 0) for sid, y in zip(t.segment_id, t.year)]
+        t["n_reports"] = counts.reindex(pd.MultiIndex.from_arrays([t.segment_id, t.year]), fill_value=0).values
         t["had_report"] = (t.n_reports > 0).astype(int)
         t["split"] = [split_for(win, y, frozen) for y in t.year]
         tables.append(t)

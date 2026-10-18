@@ -36,8 +36,6 @@ def keyword_classify(text: str) -> str:
     road = bool(re.search(r"\broad\b|carriageway|roundabout|junction", t, re.I))
     if _POTHOLE.search(t) and (road or not _OTHER.search(t)):
         return "pothole"
-    if _OTHER.search(t):
-        return "other"
     return "other"
 
 
