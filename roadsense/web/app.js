@@ -78,8 +78,7 @@ function renderPlanRows() {
   $("#plan-rows").innerHTML = rows.map((r) => `<tr data-id="${esc(r.segment_id)}">
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
-        <div class="reasons">${esc(r.reasons)}</div>
-        <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : r.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div></td>
+        <div class="reasons" title="${esc(r.reasons)}">${esc(String(r.reasons || "").split(" · ")[0])}${r.labels_synthetic ? " " + badge("SYNTHETIC") : r.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
       <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div>${treatedTag(r.recently_treated)}</td>
       <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
@@ -314,7 +313,7 @@ async function loadInspection(c) {
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         ${r.open_report ? ` <span class="vb must">open report</span><div class="reasons">${r.open_reports.map((o) => `${esc(o.reported_at)}: ${esc(o.title)}`).join(" · ")}</div>` : ""}
-        <div class="reasons">${esc(r.reasons.join(" · "))}</div></td>
+        <div class="reasons" title="${esc(r.reasons.join(" · "))}">${esc(r.reasons[0] || "")}</div></td>
       <td><span class="u ${BAND[r.risk_band] || "monitor"}">${esc(r.risk_label)}</span></td>
       <td>${esc(r.action)}</td></tr>`;
   $("#inspect-rows").innerHTML = p.sections.filter((s) => s.count).map((s) =>
