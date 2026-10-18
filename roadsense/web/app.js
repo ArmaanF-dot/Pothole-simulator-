@@ -421,6 +421,34 @@ async function setCity(c) {
       Report triage (read-only). Streetlights are <b>Southampton only</b>.</span>`;
   }
 }
+// side panel width: drag the handle (or arrow keys on it), double-click to reset; remembered in this browser
+(function panelResizer() {
+  const main = document.querySelector("main"), bar = $("#resizer"), KEY = "roadsense.panelWidth";
+  const MIN = 320, mapMin = () => Math.min(360, main.clientWidth * 0.3);
+  const clamp = (w) => Math.round(Math.max(MIN, Math.min(w, main.clientWidth - mapMin())));
+  const apply = (w) => { main.style.setProperty("--panel-w", clamp(w) + "px"); bar.setAttribute("aria-valuenow", String(clamp(w)));
+    if (state.mapReady) state.map.resize(); };
+  const save = (w) => { try { localStorage.setItem(KEY, String(clamp(w))); } catch (e) { /* storage blocked: width lasts this visit only */ } };
+  const reset = () => { main.style.removeProperty("--panel-w"); try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    if (state.mapReady) state.map.resize(); };
+  try { const w = +localStorage.getItem(KEY); if (w) apply(w); } catch (e) { /* ignore */ }
+  bar.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); bar.setPointerCapture(e.pointerId); document.body.classList.add("resizing");
+    const left = main.getBoundingClientRect().left;
+    const move = (ev) => apply(ev.clientX - left);
+    const up = (ev) => { bar.removeEventListener("pointermove", move); bar.removeEventListener("pointerup", up);
+      document.body.classList.remove("resizing"); save(ev.clientX - left); };
+    bar.addEventListener("pointermove", move); bar.addEventListener("pointerup", up);
+  });
+  bar.addEventListener("dblclick", reset);
+  bar.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const w = $("#panel").getBoundingClientRect().width + (e.key === "ArrowLeft" ? -40 : 40);
+    apply(w); save(w);
+  });
+  window.addEventListener("resize", () => { const v = main.style.getPropertyValue("--panel-w"); if (v) apply(parseFloat(v)); });
+})();
 $("#city").onchange = (e) => setCity(e.target.value);
 $("#ward").onchange = (e) => { state.ward = e.target.value; refresh(); if (!$("#tab-lights").classList.contains("hidden")) loadLights(); };
 $("#scenario").onchange = async (e) => { state.scenario = e.target.value; $("#plan-head").textContent = "Re-scoring…"; await Promise.all([loadPlan(), state.mapReady ? loadMap() : null]); };
