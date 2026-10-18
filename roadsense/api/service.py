@@ -251,6 +251,7 @@ class Service:
                "reports": [q for q in self.queue if q.get("segment_id") == sid],
                "outcomes": [o for o in self.outcomes if o["segment_id"] == sid],
                "recently_treated": self.recently_treated().get(sid),
+               "context": self.works_context().get(sid),
                "data_dates": self.data_dates(), "badges": self.badges()}
         return out
 
@@ -280,9 +281,10 @@ class Service:
             movers = records(cmp_.head(10).reset_index(), ["segment_id", "name", "ward", "highway", "esal_day", "bus_stop",
                                                           "urgency_base", "urgency_scn", "band_scn", "p30_peak_change"])
         rows, wrows = records(p, P.PLAN_COLS), records(w, P.PLAN_COLS)
-        tr = self.recently_treated()
+        tr, cx = self.recently_treated(), self.works_context()
         for r in rows + wrows:  # display only
             r["recently_treated"] = tr.get(r["segment_id"])
+            r["context"] = cx.get(r["segment_id"])
         return {"movers": movers, "as_of": self.risk_meta.get("as_of"), "trained_on": self.risk_meta.get("trained_on"),
                 "model_label": self.model_label(),
                 "model_version": self.risk_meta.get("model_version"), "ward": ward, "scenario": scenario, "scenario_method": method,
@@ -292,6 +294,43 @@ class Service:
                 **self.badges(), "rows": rows, "worth": {**P.worth_summary(w), "rows": wrows},
                 "recently_treated_rule": "carriageway work completed or in progress within 2 years before the as-of date "
                                          "(council scheme lists; display only, not used in ranking)"}
+
+    def works_context(self, city: str | None = None) -> dict:
+        """{segment_id: {construction, works}} from the brownfield registers and Street Manager, cached per city.
+        Display only unless reports/context_eval.md says a feature set helps on held-out years (context_verdict)."""
+        city = city or self.cfg["coverage"]["city"]
+        if not hasattr(self, "_works_ctx"):
+            self._works_ctx = {}
+        if city not in self._works_ctx:
+            from roadsense.features import works_context as WC
+            sites, links, works = WC.load_linked(str(self.root))
+            as_of = self.risk_meta.get("as_of") if city == self.cfg["coverage"]["city"] else self.city_view(city).meta.get("as_of")
+            self._works_ctx[city] = WC.current(city, as_of or self.risk_meta.get("as_of"), sites, links, works)
+        return self._works_ctx[city]
+
+    def context_verdict(self) -> dict:
+        """Held-out verdict per feature set from data/models/context_eval.json (roadsense.models.context_eval)."""
+        import json
+        p = Path(self.root) / "data" / "models" / "context_eval.json"
+        if not p.exists():
+            return {}
+        r = json.loads(p.read_text(encoding="utf-8"))
+        out = {}
+        for k, v in r.get("sets", {}).items():
+            cities = {c: {kk: x.get(kk) for kk in ["base", "with", "diff", "ci95", "reports", "years"]} if "ci95" in x
+                      else {"status": x.get("status")} for c, x in v.get("cities", {}).items()}
+            out[k] = {"used_in_ranking": v.get("used_in_ranking", False), "verdict": v.get("verdict"), "cities": cities}
+        return out
+
+    def prevention_scenario(self) -> dict:
+        """Modelled no-prevention vs prevention scenario (roadsense.prevent.scenario), cached."""
+        if getattr(self, "_scenario_report", None) is None:
+            from roadsense.prevent import scenario as SC
+            p = self.plan()
+            self._scenario_report = SC.run_scenarios(self.scored, self.cfg, [x["segment_id"] for x in p["rows"]],
+                                                     [x["segment_id"] for x in p["worth"]["rows"]])
+            self._scenario_report["as_of"] = p.get("as_of")
+        return self._scenario_report
 
     def recently_treated(self) -> dict:
         """{segment_id: flag} from data/processed/soton_resurfacing.csv, cached (display only)."""

@@ -3,7 +3,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (x, d = 3) => (x === null || x === undefined ? "n/a" : Number(x).toFixed(d));
 const BAND_COLOR = { critical: "#c62828", high: "#ef6c00", prevention: "#f9a825", monitor: "#7cb342" };
-const state = { city: "", homeCity: "", ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null };
+const state = { city: "", homeCity: "", ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null,
+  ctxVerdict: {}, impact: null };
 const vbClass = (t) => (String(t).startsWith("Pays back") ? "pay" : String(t).startsWith("Confirmed") ? "must"
   : String(t).startsWith("Simulated") ? "sim" : "loss");
 
@@ -66,11 +67,50 @@ async function loadPlan() {
 // council scheme lists: carriageway work done in the last 2 years (display only, not used in the ranking)
 const treatedTag = (t, long) => !t ? "" : `<div class="small"><span class="vb treated" title="${esc(t.work + ": " + t.scheme + " (" + t.source + (t.match === "manual" ? ", manual match" : "") + ")")}">${esc(t.label)}</span>${long ? ` ${esc(t.work)}. Check before treating again.` : ""}</div>`;
 
+// building sites near the road and utility digs on it (brownfield registers, OpenStreetMap, DfT Street Manager).
+// Display only unless the held-out check (reports/context_eval.md) found a gain: see ctxNote.
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const ctxTags = (c) => {
+  if (!c) return "";
+  const t = [];
+  if (c.construction) t.push(`<span class="vb site" title="${esc(c.construction.sites.map((x) => x.address || x.reference).join("; "))}">${
+    c.construction.count > 1 ? plural(c.construction.count, "building site", "building sites") : "Building site"} nearby</span>`);
+  if (c.works) t.push(`<span class="vb dig" title="${esc(c.works.promoters.join(", "))}">Dug up ${c.works.count}× in ${c.works.months} months</span>`);
+  return t.length ? `<div class="small ctx">${t.join(" ")}</div>` : "";
+};
+const ctxNote = (k) => {
+  const v = state.ctxVerdict[k];
+  if (!v) return "Not tested on held-out years yet: context only, not used in ranking.";
+  return v.used_in_ranking ? "Helped on held-out years: used in ranking." : "No clear gain on held-out years: context only, not used in ranking.";
+};
+function ctxRows(c) {
+  if (!c) return "";
+  let h = "";
+  if (c.construction) {
+    const sites = c.construction.sites.map((x) => `<div>${esc(x.address || x.reference)} <span class="small muted">${[
+      x.dwellings ? plural(x.dwellings, "home", "homes") : "", x.permission_date ? "permission " + esc(x.permission_date) : "",
+      x.source === "osm_construction" ? "OpenStreetMap construction site" + (x.kind ? " (" + esc(x.kind) + ")" : "") : "brownfield register",
+      x.public_land ? "public land" : "", fmt(x.dist_m, 0) + " m away"].filter(Boolean).join(" · ")}</span></div>`).join("");
+    h += `<div>Building sites</div><div>${sites}${c.construction.count > 3 ? `<div class="small muted">and ${c.construction.count - 3} more</div>` : ""}
+      <div class="small muted">Within 150 m; site lorries and new homes add heavy traffic. ${ctxNote("construction")}</div></div>`;
+  }
+  if (c.works) {
+    const w = c.works;
+    h += `<div>Street works</div><div>${plural(w.count, "dig", "digs")} completed in the last ${w.months} months${w.carriageway ? `, ${w.carriageway} in the carriageway` : ", footway or verge only"}; last ${esc(w.last)}
+      <div class="small muted">${esc(w.promoters.join(", "))} · ${esc(w.activities.join(", "))}</div>
+      <div class="small muted">DfT Street Manager. Trench reinstatements can fail early. ${ctxNote("utility_works")}</div></div>`;
+  }
+  return h;
+}
+
 function renderPlanRows() {
   const p = state.plan;
   if (!p) return;
-  const worth = state.planView === "worth";
+  const worth = state.planView === "worth", impact = state.planView === "impact";
   const rows = worth ? p.worth.rows : p.rows;
+  ["#plan-head", "#movers", "#plan-table"].forEach((q) => $(q).classList.toggle("hidden", impact || otherCity()));
+  $("#impact").classList.toggle("hidden", !impact || otherCity());
+  if (impact) loadImpact();
   $("#worth-count").textContent = p.worth.rows.length || "";
   $("#worth-head").textContent = p.worth.header;
   $("#worth-head").classList.toggle("hidden", !worth);
@@ -81,7 +121,7 @@ function renderPlanRows() {
         <div class="reasons">${esc(r.reasons)}</div>
         <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : r.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
-      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div>${treatedTag(r.recently_treated)}</td>
+      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div>${treatedTag(r.recently_treated)}${ctxTags(r.context)}</td>
       <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
         ${r.confirmed_pothole ? `<div class="small muted">${r.confirmed_by === "crew" ? "crew " : "FixMyStreet "}${esc(r.confirmed_source_id)} · ${esc(r.confirmed_by)}${r.confirmed_is_synthetic ? " " + badge("SYNTHETIC") : ""}</div>` : ""}
         ${r.confirmed_pothole && r.preventive_treatment ? `<div class="small muted">Also suggested: ${esc(r.preventive_treatment_label)} £${fmt(r.preventive_treatment_cost_gbp, 0)} (×${fmt(r.preventive_avoided_per_gbp, 2)})</div>` : ""}</td></tr>`).join("")
@@ -128,6 +168,21 @@ async function loadMap() {
       new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Open FixMyStreet report</b><br>${esc(p.title)}<br>Reported ${esc(p.date)}${otherCity() ? "" : " · urgency 100"}`).addTo(state.map); });
   }
   state.map.setLayoutProperty("open", "visibility", "visible");  // the selected city's open reports (same open window)
+  const sites = await api("/context/sites?" + qs({ city: state.city })).catch(() => ({ sites: [] }));
+  if (tok !== state.mapTok) return null;
+  const sc = { type: "FeatureCollection", features: sites.sites.map((x) => ({ type: "Feature", properties: x,
+    geometry: { type: "Point", coordinates: [x.lon, x.lat] } })) };
+  if (state.map.getSource("sites")) state.map.getSource("sites").setData(sc); else {
+    state.map.addSource("sites", { type: "geojson", data: sc });
+    state.map.addLayer({ id: "sites", type: "circle", source: "sites", paint: { "circle-radius": 6, "circle-color": "#ffffff",
+      "circle-stroke-color": "#2650b8", "circle-stroke-width": 3 } }, "open");
+    state.map.on("click", "sites", (e) => { e.preventDefault(); const p = e.features[0].properties;
+      new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Building site</b><br>${esc(p.address || p.reference)}<br><span class="small muted">${
+        p.source === "osm_construction" ? "OpenStreetMap construction site" : "Brownfield register" + (p.permission_date ? ", permission " + esc(p.permission_date) : "")
+      }${p.dwellings ? " · " + esc(p.dwellings) + " homes" : ""}${p.public_land === true || p.public_land === "true" ? " · public land" : ""}</span>`).addTo(state.map); });
+    state.map.on("mouseenter", "sites", () => state.map.getCanvas().style.cursor = "pointer");
+    state.map.on("mouseleave", "sites", () => state.map.getCanvas().style.cursor = "");
+  }
   state.gj = gj;
   return gj;
 }
@@ -154,7 +209,8 @@ async function showCitySegment(id) {
     <p><span class="vb ${s.risk_band === "rest" ? "pay" : "must"}">${esc(s.risk_label)}</span> ${badge(s.badge, s.badge.startsWith("100%") ? "real" : "")}</p>
     <div class="kv"><div>Risk band</div><div>${esc(s.risk_label)} <span class="small muted">(rank within ${esc(s.city)})</span></div>
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
-      <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} reports · history ${esc(s.history_source)}</div></div>
+      <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} reports · history ${esc(s.history_source)}</div>
+      ${ctxRows(s.context)}</div>
     <p class="small muted">${esc(s.note)}</p>`);
 }
 
@@ -194,6 +250,7 @@ async function showSegment(id, fly) {
       <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}${treatedTag(s.recently_treated, true)}</div>
       ${s.ref ? `<div>Road</div><div>${esc(s.ref)}${s.bus_routes ? " · " + s.bus_routes + " bus routes" : ""}</div>` : ""}
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
+      ${ctxRows(s.context)}
       <div>Data dates</div><div class="small">risk as of ${esc(dd.risk_as_of)}<br>${esc(dd.forecast.message)}<br>FixMyStreet retrieved ${esc((dd.fixmystreet_retrieved_at || "").slice(0, 10))}</div>
     </div>
     <div><b>Record crew outcome</b><br>
@@ -209,6 +266,48 @@ window.outcome = async (sid, o) => {
   await showSegment(sid);
   $("#detail").insertAdjacentHTML("beforeend", `<p class="card">Re-scored: urgency ${fmt(r.before.urgency, 0)} (${esc(r.before.band)}) → <b>${fmt(r.after.urgency, 0)} (${esc(r.after.band)})</b>, treatment ${esc(r.after.treatment)}.</p>`);
 };
+
+// Without vs with prevention: a MODELLED scenario (roadsense.prevent.scenario), not observed evidence
+const n0 = (x) => Math.round(x).toLocaleString("en-GB");
+const money = (x) => x >= 1e6 ? "£" + (x / 1e6).toFixed(2) + "m" : "£" + Math.round(x / 1000).toLocaleString("en-GB") + "k";
+async function loadImpact() {
+  if (!state.impact) {
+    try { state.impact = await api("/report/prevention"); }
+    catch (e) { $("#impact").innerHTML = `<p class="error">Could not build the scenario: ${esc(e.message)}</p>`; return; }
+  }
+  const r = state.impact, sc = r.scenarios, H = r.horizon_years;
+  const rows = Object.entries(sc);
+  // bars show potholes avoided (the difference prevention makes); the number on the right is the total that still happen
+  const max = Math.max(...rows.map(([, v]) => Math.max(v.avoided_total.low, v.avoided_total.high)));
+  const bar = ([k, v]) => {
+    const rt = v.range_total, a = v.avoided_total, lo = Math.min(a.low, a.high), hi = Math.max(a.low, a.high);
+    const pct = (x) => (100 * x / max).toFixed(2) + "%";
+    if (k === "no_prevention")
+      return `<div class="sc-row base"><div class="sc-label">${esc(v.label)}<div class="small muted">baseline</div></div>
+        <div class="sc-base">none avoided</div><div class="sc-val">${n0(rt.central)}</div></div>`;
+    const sub = `spend ${money(v.spend_total_gbp)} · reactive cost avoided ${money(v.reactive_cost_avoided_gbp.central)}`;
+    return `<div class="sc-row"><div class="sc-label">${esc(v.label)}<div class="small muted">${sub}</div></div>
+      <div class="sc-bar" role="img" aria-label="${esc(v.label)}: ${n0(a.central)} potholes avoided over ${H} years, range ${n0(lo)} to ${n0(hi)}">
+        <span class="fill" style="width:${pct(a.central)}"></span><span class="rng" style="left:${pct(lo)};width:calc(${pct(hi)} - ${pct(lo)})"></span>
+        <span class="lbl">${n0(a.central)} avoided <span class="muted">(${n0(lo)} to ${n0(hi)})</span></span></div>
+      <div class="sc-val">${n0(rt.central)}</div></div>`;
+  };
+  const budgets = rows.filter(([k]) => k.startsWith("budget_"));
+  const allBelow = budgets.length && budgets.every(([, v]) => v.reactive_cost_avoided_gbp.central < v.spend_total_gbp);
+  $("#impact").innerHTML = `<p class="impact-tags">${badge("MODELLED SCENARIO", "prov")} ${badge("SYNTHETIC")} <span class="small muted">wear and history inputs</span></p>
+    <p class="impact-lead"><span class="lead">With no prevention, about ${n0(r.base_potholes_year)} potholes a year need reactive repair</span>
+      ${n0(r.base_potholes_year * H)} over ${H} years across ${n0(r.segments)} council roads. ${esc(r.foi_anchor)}.</p>
+    <p class="small muted">Bars: potholes avoided over ${H} years under each option, central case, with the range when each treatment works
+      half as well or a quarter better than assumed. Right: potholes that still need reactive repair. This applies assumed treatment effects
+      to the risk model; it is not a measured result.</p>
+    <div class="sc"><div class="sc-row sc-head small muted"><div>Option</div><div>Potholes avoided</div><div>Still happen</div></div>${rows.map(bar).join("")}</div>
+    ${allBelow ? `<p class="note">At ALARM's average reactive repair cost (£${state.plan ? state.plan.costs.reactive_repair.toFixed(2) : "87.80"}), the reactive cost avoided is below the treatment spend in every budget
+      option: on cost alone prevention pays back only on the roads in Worth treating. Fewer potholes also means fewer claims, injuries and
+      closures, which this does not count.</p>` : ""}
+    <details><summary>Year by year</summary><table class="rows plain"><thead><tr><th>Option</th>${Array.from({ length: H }, (_, i) => `<th>Year ${i + 1}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map(([, v]) => `<tr><td>${esc(v.label)}</td>${v.potholes_by_year.map((x) => `<td>${n0(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></details>
+    <details><summary>Assumptions</summary><ul class="small">${r.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></details>`;
+}
 
 async function loadFms() {
   const recent = await api("/reports/recent?n=40");
@@ -270,6 +369,7 @@ async function loadSources() {
 
 // the plan never waits on the map: map layers load whenever the base map is ready
 async function refresh() {
+  state.impact = null;
   await Promise.all([loadMeta(), loadPlan(), loadQueue(), state.mapReady ? loadMap() : null]);
   if (state.mapReady) state.map.resize();
 }
@@ -314,7 +414,7 @@ async function loadInspection(c) {
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         ${r.open_report ? ` <span class="vb must">open report</span><div class="reasons">${r.open_reports.map((o) => `${esc(o.reported_at)}: ${esc(o.title)}`).join(" · ")}</div>` : ""}
-        <div class="reasons">${esc(r.reasons.join(" · "))}</div></td>
+        <div class="reasons">${esc(r.reasons.join(" · "))}</div>${ctxTags(r.context)}</td>
       <td><span class="u ${BAND[r.risk_band] || "monitor"}">${esc(r.risk_label)}</span></td>
       <td>${esc(r.action)}</td></tr>`;
   $("#inspect-rows").innerHTML = p.sections.filter((s) => s.count).map((s) =>
@@ -339,13 +439,15 @@ async function setCity(c) {
   [".subtabs", "#plan-head", "#movers", "#plan-table"].forEach((s) => $(s).classList.toggle("hidden", other));
   $("#worth-head").classList.toggle("hidden", other || state.planView !== "worth");
   $("#inspect").classList.toggle("hidden", !other);
+  $("#impact").classList.toggle("hidden", other || state.planView !== "impact");
+  if (!other) renderPlanRows();  // restores the chosen plan view (all, worth, or without vs with prevention)
   if (other) { loadCityTriage(c); loadInspection(c); }
   const note = $("#city-note");
   note.classList.toggle("hidden", !other);
   $("#detail").classList.add("hidden");
   if (state.mapReady) {  // drop the old city's roads and reports at once so they can't be clicked while the new city loads
     const empty = { type: "FeatureCollection", features: [] };
-    ["segments", "open"].forEach((id) => state.map.getSource(id) && state.map.getSource(id).setData(empty));
+    ["segments", "open", "sites"].forEach((id) => state.map.getSource(id) && state.map.getSource(id).setData(empty));
     state.gj = null;
   }
   let gj = null;
@@ -377,5 +479,6 @@ $("#dup-btn").onclick = () => triage(state.lastFms || $("#fms-pick").value);
   await loadMeta();
   initMap().then(async () => { state.mapReady = true; await loadMap(); state.map.resize(); });
   // meta is already loaded and the map loads itself when ready, so not refresh() (it would fetch both again)
+  api("/context/evaluation").then((v) => { state.ctxVerdict = v || {}; }).catch(() => {});
   await Promise.all([loadPlan(), loadQueue(), loadFms(), loadSources()]);
 })().catch((e) => { $("#stale").textContent = "Could not reach the RoadSense API: " + e.message; $("#stale").classList.remove("hidden"); });
