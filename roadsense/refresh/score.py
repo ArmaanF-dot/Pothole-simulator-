@@ -104,7 +104,7 @@ def real_risk(cfg: dict, stage: Path, models_dir: Path, cities: list[str], t0) -
         seg = seg[seg["owner"] != "national_highways"].reset_index(drop=True) if "owner" in seg else seg
         fms = labels[(labels["city"] == home) & labels["split"].isin(["train", "test"])]["n_reports"].values
         hist = PR.synthetic_history_labels(seg, potholes, fms, as_of.year, home)
-        st = rr.build_table(seg, hist, wx=inp.get("wx"))
+        st = rr.build_table(seg, hist, wx=inp.get("wx"), context=inp.get("context"))
         st = st[st["year"] == as_of.year].reset_index(drop=True)
         st["city_code"] = pd.Categorical(st["city"], categories=cats)
         X = st[model.feature_names_used_]
@@ -141,7 +141,7 @@ def real_risk(cfg: dict, stage: Path, models_dir: Path, cities: list[str], t0) -
         res[home] = len(out)
     others = [c for c in cities if c != home]
     if others:
-        table = rr.build_table(seg_all, labels, wx=inp.get("wx"))
+        table = rr.build_table(seg_all, labels, wx=inp.get("wx"), context=inp.get("context"))
         for city in others:
             name = city.lower().replace(" ", "_")
             prev_p = od / f"risk_{name}_latest.parquet"

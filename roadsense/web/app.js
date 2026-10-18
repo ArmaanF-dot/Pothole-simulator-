@@ -3,7 +3,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (x, d = 3) => (x === null || x === undefined ? "n/a" : Number(x).toFixed(d));
 const BAND_COLOR = { critical: "#c62828", high: "#ef6c00", prevention: "#f9a825", monitor: "#7cb342" };
-const state = { city: "", homeCity: "", ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null };
+const state = { city: "", homeCity: "", ward: "", scenario: "", meta: null, map: null, lastFms: null, planView: "all", plan: null,
+  ctxVerdict: {} };
 const vbClass = (t) => (String(t).startsWith("Pays back") ? "pay" : String(t).startsWith("Confirmed") ? "must"
   : String(t).startsWith("Simulated") ? "sim" : "loss");
 
@@ -50,7 +51,7 @@ async function loadPlan() {
   const p = await api("/plan/prevention?" + qs({ ward: state.ward, scenario: state.scenario,
     forecast_as_of: new URLSearchParams(location.search).get("forecast_as_of") }));
   const asOf = p.as_of ? new Date(p.as_of + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "unknown";
-  $("#plan-head").innerHTML = `${p.count} segments to treat${state.ward ? " in " + esc(state.ward) : ""}, week of ${esc(asOf)} (as_of ${esc(p.as_of)}).`
+  $("#plan-head").innerHTML = `<span class="lead">${p.count} segments to treat${state.ward ? " in " + esc(state.ward) : ""}, week of ${esc(asOf)}</span> (as_of ${esc(p.as_of)}).`
     + (p.provisional ? " " + badge("PROVISIONAL", "prov") : "")
     + (p.scenario ? ` What-if <b>${esc(p.scenario)}</b> (${esc(p.scenario_method)}).` : "")
     + (p.model_label ? ` Model ${esc(p.model_version || "")}: <b>${esc(p.model_label)}</b>.` : "")
@@ -65,6 +66,43 @@ async function loadPlan() {
 
 // council scheme lists: carriageway work done in the last 2 years (display only, not used in the ranking)
 const treatedTag = (t, long) => !t ? "" : `<div class="small"><span class="vb treated" title="${esc(t.work + ": " + t.scheme + " (" + t.source + (t.match === "manual" ? ", manual match" : "") + ")")}">${esc(t.label)}</span>${long ? ` ${esc(t.work)}. Check before treating again.` : ""}</div>`;
+
+// building sites near the road and utility digs on it (brownfield registers, OpenStreetMap, DfT Street Manager).
+// Both feed the risk model (earlier years' sites and digs); ctxNote says what the held-out check found.
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const ctxTags = (c) => {
+  if (!c) return "";
+  const t = [];
+  if (c.construction) t.push(`<span class="vb site" title="${esc(c.construction.sites.map((x) => x.address || x.reference).join("; "))}">${
+    c.construction.count > 1 ? plural(c.construction.count, "building site", "building sites") : "Building site"} nearby</span>`);
+  if (c.works) t.push(`<span class="vb dig" title="${esc(c.works.promoters.join(", "))}">Dug up ${c.works.count}× in ${c.works.months} months</span>`);
+  return t.length ? `<div class="small ctx">${t.join(" ")}</div>` : "";
+};
+const ctxNote = (k) => {
+  const v = state.ctxVerdict[k];
+  if (!v) return "";
+  if (!v.used_in_ranking) return "Context only: not an input to the risk model.";
+  return v.clear_gain ? "Used in the risk model; clear gain on held-out years." : "Used in the risk model; on held-out years it has not improved the ranking.";
+};
+function ctxRows(c) {
+  if (!c) return "";
+  let h = "";
+  if (c.construction) {
+    const sites = c.construction.sites.map((x) => `<div>${esc(x.address || x.reference)} <span class="small muted">${[
+      x.dwellings ? plural(x.dwellings, "home", "homes") : "", x.permission_date ? "permission " + esc(x.permission_date) : "",
+      x.source === "osm_construction" ? "OpenStreetMap construction site" + (x.kind ? " (" + esc(x.kind) + ")" : "") : "brownfield register",
+      x.public_land ? "public land" : "", fmt(x.dist_m, 0) + " m away"].filter(Boolean).join(" · ")}</span></div>`).join("");
+    h += `<div>Building sites</div><div>${sites}${c.construction.count > 3 ? `<div class="small muted">and ${c.construction.count - 3} more</div>` : ""}
+      <div class="small muted">Within 150 m; site lorries and new homes add heavy traffic. ${ctxNote("construction")}</div></div>`;
+  }
+  if (c.works) {
+    const w = c.works;
+    h += `<div>Street works</div><div>${plural(w.count, "dig", "digs")} completed in the last ${w.months} months${w.carriageway ? `, ${w.carriageway} in the carriageway` : ", footway or verge only"}; last ${esc(w.last)}
+      <div class="small muted">${esc(w.promoters.join(", "))} · ${esc(w.activities.join(", "))}</div>
+      <div class="small muted">DfT Street Manager. Trench reinstatements can fail early. ${ctxNote("utility_works")}</div></div>`;
+  }
+  return h;
+}
 
 function renderPlanRows() {
   const p = state.plan;
@@ -81,7 +119,7 @@ function renderPlanRows() {
         <div class="reasons">${esc(r.reasons)}</div>
         <div class="reasons">${esc(r.traffic_note)} · weather: ${esc(wx(r.weather_source))}${r.labels_synthetic ? " " + badge("SYNTHETIC") : r.history_source ? " " + badge("HISTORY SYNTHETIC") : ""}</div></td>
       <td><span class="u ${r.band}">${fmt(r.urgency, 0)}</span><div class="small muted">P30 ${fmt(r.p30_w0)} → ${fmt(r.p30_peak)}</div></td>
-      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div>${treatedTag(r.recently_treated)}</td>
+      <td>${esc(r.treatment_label)}<div class="small muted">£${fmt(r.cost_planned_gbp, 0)}</div>${treatedTag(r.recently_treated)}${ctxTags(r.context)}</td>
       <td><span class="vb ${vbClass(r.value_badge)}" title="${esc(p.horizon)}">${esc(r.value_badge)}</span>
         ${r.confirmed_pothole ? `<div class="small muted">${r.confirmed_by === "crew" ? "crew " : "FixMyStreet "}${esc(r.confirmed_source_id)} · ${esc(r.confirmed_by)}${r.confirmed_is_synthetic ? " " + badge("SYNTHETIC") : ""}</div>` : ""}
         ${r.confirmed_pothole && r.preventive_treatment ? `<div class="small muted">Also suggested: ${esc(r.preventive_treatment_label)} £${fmt(r.preventive_treatment_cost_gbp, 0)} (×${fmt(r.preventive_avoided_per_gbp, 2)})</div>` : ""}</td></tr>`).join("")
@@ -128,11 +166,26 @@ async function loadMap() {
       new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Open FixMyStreet report</b><br>${esc(p.title)}<br>Reported ${esc(p.date)}${otherCity() ? "" : " · urgency 100"}`).addTo(state.map); });
   }
   state.map.setLayoutProperty("open", "visibility", "visible");  // the selected city's open reports (same open window)
+  const sites = await api("/context/sites?" + qs({ city: state.city })).catch(() => ({ sites: [] }));
+  if (tok !== state.mapTok) return null;
+  const sc = { type: "FeatureCollection", features: sites.sites.map((x) => ({ type: "Feature", properties: x,
+    geometry: { type: "Point", coordinates: [x.lon, x.lat] } })) };
+  if (state.map.getSource("sites")) state.map.getSource("sites").setData(sc); else {
+    state.map.addSource("sites", { type: "geojson", data: sc });
+    state.map.addLayer({ id: "sites", type: "circle", source: "sites", paint: { "circle-radius": 6, "circle-color": "#ffffff",
+      "circle-stroke-color": "#2650b8", "circle-stroke-width": 3 } }, "open");
+    state.map.on("click", "sites", (e) => { e.preventDefault(); const p = e.features[0].properties;
+      new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>Building site</b><br>${esc(p.address || p.reference)}<br><span class="small muted">${
+        p.source === "osm_construction" ? "OpenStreetMap construction site" : "Brownfield register" + (p.permission_date ? ", permission " + esc(p.permission_date) : "")
+      }${p.dwellings ? " · " + esc(p.dwellings) + " homes" : ""}${p.public_land === true || p.public_land === "true" ? " · public land" : ""}</span>`).addTo(state.map); });
+    state.map.on("mouseenter", "sites", () => state.map.getCanvas().style.cursor = "pointer");
+    state.map.on("mouseleave", "sites", () => state.map.getCanvas().style.cursor = "");
+  }
   state.gj = gj;
   return gj;
 }
 
-function detail(html) { const d = $("#detail"); d.innerHTML = `<button class="close" onclick="this.parentNode.classList.add('hidden')">×</button>` + html; d.classList.remove("hidden"); }
+function detail(html) { const d = $("#detail"); d.innerHTML = `<button class="close" aria-label="Close" onclick="this.parentNode.classList.add('hidden')">×</button>` + html; d.classList.remove("hidden"); }
 
 async function locate(lat, lon) {
   if (otherCity()) return;  // /locate covers the home city only
@@ -154,7 +207,8 @@ async function showCitySegment(id) {
     <p><span class="vb ${s.risk_band === "rest" ? "pay" : "must"}">${esc(s.risk_label)}</span> ${badge(s.badge, s.badge.startsWith("100%") ? "real" : "")}</p>
     <div class="kv"><div>Risk band</div><div>${esc(s.risk_label)} <span class="small muted">(rank within ${esc(s.city)})</span></div>
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
-      <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} reports · history ${esc(s.history_source)}</div></div>
+      <div>Model</div><div class="small">${esc(s.model_version)} · trained on ${esc(s.trained_on)} reports · history ${esc(s.history_source)}</div>
+      ${ctxRows(s.context)}</div>
     <p class="small muted">${esc(s.note)}</p>`);
 }
 
@@ -194,6 +248,7 @@ async function showSegment(id, fly) {
       <div>Treatment</div><div><b>${esc(s.treatment_label)}</b> £${fmt(s.treatment_cost_gbp, 0)}${treatedTag(s.recently_treated, true)}</div>
       ${s.ref ? `<div>Road</div><div>${esc(s.ref)}${s.bus_routes ? " · " + s.bus_routes + " bus routes" : ""}</div>` : ""}
       <div>Why</div><div>${s.reasons.map(esc).join("<br>") || "n/a"}</div>
+      ${ctxRows(s.context)}
       <div>Data dates</div><div class="small">risk as of ${esc(dd.risk_as_of)}<br>${esc(dd.forecast.message)}<br>FixMyStreet retrieved ${esc((dd.fixmystreet_retrieved_at || "").slice(0, 10))}</div>
     </div>
     <div><b>Record crew outcome</b><br>
@@ -230,7 +285,7 @@ async function loadQueue() {
       segment_id: w.segment_id, lamp_id: w.lamp_id, urgency: w.urgency, summary: w.summary, recommended_action: w.recommended_action,
       duplicate_of: w.merged_into }, null, 1))}</pre></details>
     ${w.status === "pending_approval" ? `<button class="primary" onclick="approve('${esc(w.report_id)}')">Approve work order</button>
-      <button onclick="reject('${esc(w.report_id)}')">Reject</button>` : ""}</div>`).join("") || `<p class="muted">No reports triaged yet.</p>`;
+      <button onclick="reject('${esc(w.report_id)}')">Reject</button>` : ""}</div>`).join("") || `<p class="empty">No reports triaged yet.</p>`;
 }
 
 window.approve = async (id) => { const r = await post(`/workorders/${encodeURIComponent(id)}/approve`, { officer: "officer" });
@@ -240,6 +295,7 @@ window.showSegment = showSegment;
 
 async function triage(fmsId) {
   const btns = document.querySelectorAll("#triage-form button"); btns.forEach((b) => b.disabled = true);
+  $("#triage-err").classList.add("hidden");
   try {
     const body = { fms_id: Number(fmsId) };
     const f = $("#photo").files[0];
@@ -247,12 +303,12 @@ async function triage(fmsId) {
       body.image_b64 = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.readAsDataURL(f); }); }
     await post("/reports", body); state.lastFms = fmsId; $("#photo").value = ""; await loadQueue();
   }
-  catch (e) { alert(e.message); } finally { btns.forEach((b) => b.disabled = false); }
+  catch (e) { $("#triage-err").textContent = "Triage failed: " + e.message; $("#triage-err").classList.remove("hidden"); } finally { btns.forEach((b) => b.disabled = false); }
 }
 
 async function loadLights() {
   const l = await api("/lights?" + qs({ ward: state.ward, due: !$("#dark-only").checked, dark: $("#dark-only").checked, limit: 200 }));
-  $("#lights-head").innerHTML = `${l.count_due} lamps due for replacement within ${l.due_days} days, ${l.count_currently_dark} currently dark, as of ${esc(l.as_of)} ${badge(l.kind === "mock" ? "MOCK" : "SYNTHETIC", l.kind === "mock" ? "mock" : "")}. `
+  $("#lights-head").innerHTML = `<span class="lead">${l.count_due} lamps due for replacement within ${l.due_days} days, ${l.count_currently_dark} currently dark,</span> as of ${esc(l.as_of)} ${badge(l.kind === "mock" ? "MOCK" : "SYNTHETIC", l.kind === "mock" ? "mock" : "")}. `
     + `Report a faulty light on the <a href="${esc(l.official_report_url)}" target="_blank" rel="noopener">council's streetlight page</a>.`;
   $("#light-rows").innerHTML = l.lamps.map((x) => `<tr data-lat="${x.lat}" data-lon="${x.lon}"><td>${esc(x.lamp_id)}<div class="small muted">${esc(x.lamp_type)}</div></td>
     <td>${esc(x.name)}<div class="small muted">${esc(x.ward)}</div></td><td>${fmt(x.p_fail_90d)}</td>
@@ -273,10 +329,13 @@ async function refresh() {
   if (state.mapReady) state.map.resize();
 }
 
+// dim the base map in dark mode so the risk colours still read; the colours themselves never change
+const DARK = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
 function initMap() {
   state.map = new maplibregl.Map({ container: "map", center: [-1.40, 50.91], zoom: 12, style: {
     version: 8, sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256,
-      attribution: "© OpenStreetMap contributors" } }, layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.6 } }] } });
+      attribution: "© OpenStreetMap contributors" } }, layers: [{ id: "osm", type: "raster", source: "osm", paint: DARK ? { "raster-saturation": -0.85, "raster-brightness-max": 0.62, "raster-contrast": 0.1 }
+      : { "raster-saturation": -0.6 } }] } });
   return new Promise((res) => state.map.on("load", res));
 }
 
@@ -310,7 +369,7 @@ async function loadInspection(c) {
       <td>${r.rank}</td>
       <td><b>${esc(r.name)}</b> <span class="muted small">${esc(r.highway)} · ${esc(r.ward)}</span>
         ${r.open_report ? ` <span class="vb must">open report</span><div class="reasons">${r.open_reports.map((o) => `${esc(o.reported_at)}: ${esc(o.title)}`).join(" · ")}</div>` : ""}
-        <div class="reasons">${esc(r.reasons.join(" · "))}</div></td>
+        <div class="reasons">${esc(r.reasons.join(" · "))}</div>${ctxTags(r.context)}</td>
       <td><span class="u ${BAND[r.risk_band] || "monitor"}">${esc(r.risk_label)}</span></td>
       <td>${esc(r.action)}</td></tr>`;
   $("#inspect-rows").innerHTML = p.sections.filter((s) => s.count).map((s) =>
@@ -335,13 +394,14 @@ async function setCity(c) {
   [".subtabs", "#plan-head", "#movers", "#plan-table"].forEach((s) => $(s).classList.toggle("hidden", other));
   $("#worth-head").classList.toggle("hidden", other || state.planView !== "worth");
   $("#inspect").classList.toggle("hidden", !other);
+  if (!other) renderPlanRows();
   if (other) { loadCityTriage(c); loadInspection(c); }
   const note = $("#city-note");
   note.classList.toggle("hidden", !other);
   $("#detail").classList.add("hidden");
   if (state.mapReady) {  // drop the old city's roads and reports at once so they can't be clicked while the new city loads
     const empty = { type: "FeatureCollection", features: [] };
-    ["segments", "open"].forEach((id) => state.map.getSource(id) && state.map.getSource(id).setData(empty));
+    ["segments", "open", "sites"].forEach((id) => state.map.getSource(id) && state.map.getSource(id).setData(empty));
     state.gj = null;
   }
   let gj = null;
@@ -373,5 +433,6 @@ $("#dup-btn").onclick = () => triage(state.lastFms || $("#fms-pick").value);
   await loadMeta();
   initMap().then(async () => { state.mapReady = true; await loadMap(); state.map.resize(); });
   // meta is already loaded and the map loads itself when ready, so not refresh() (it would fetch both again)
+  api("/context/evaluation").then((v) => { state.ctxVerdict = v || {}; }).catch(() => {});
   await Promise.all([loadPlan(), loadQueue(), loadFms(), loadSources()]);
 })().catch((e) => { $("#stale").textContent = "Could not reach the RoadSense API: " + e.message; $("#stale").classList.remove("hidden"); });

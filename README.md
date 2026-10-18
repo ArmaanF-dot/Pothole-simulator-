@@ -16,6 +16,13 @@ Built in 24 hours at SotonShip26 (AI Society, Eagle Labs Southampton), Southampt
   for itself, or a confirmed pothole).
 - **Report triage** (Southampton): real FixMyStreet pothole reports are classified (Gemini, with a keyword fallback)
   and turned into work orders that an officer approves or rejects.
+- **Building sites and utility digs** (both cities): roads within 150 m of a building site (brownfield land registers
+  and OpenStreetMap construction sites) and roads dug up by utility companies or the council in the last 12 months
+  (DfT Street Manager) are flagged on the plan, the inspection list and the road card, and building sites are on the
+  map. Both are also inputs to the risk model (earlier years' sites and digs, team decision 18 Oct). The held-out check
+  (`reports/context_eval.md`) finds no gain from them: +0.6 points in Brighton, −4.5 in Southampton (see How well it
+  works). Roads dug up the year before had twice the report rate of similar-risk roads in Brighton 2023-25, but the model
+  can only learn digs from Brighton 2022 (Street Manager starts in 2020).
 - **Streetlights** (Southampton, synthetic demo data).
 - **Brighton risk map**: the same risk model applied to Brighton & Hove, a city with plentiful real report data, as an
   out-of-area check.
@@ -72,8 +79,14 @@ What it does, per city (Southampton, Brighton):
 2. **Open-Meteo:** refreshes the forecast weeks (16-day forecast; `past_days=92` supplies the 90-day windows), at
    each ward's point from the committed `data/processed/ward_points_<city>.csv`. The refresh never reads `data/raw/`
    (not committed), so it runs from a fresh clone.
-3. **Never touches** OpenStreetMap, flood zones, wards or DfT counts (no `--refresh` to the OSM ingest).
-4. **Re-scores with the frozen models** in `data/models` (no retraining), rebuilds the Southampton prevention plan
+3. **Building sites and street works:** once a UTC day, re-reads the brownfield land registers (planning.data.gov.uk)
+   and OpenStreetMap `landuse=construction` sites, and checks DfT Street Manager for any month published since the
+   newest one stored (DfT publishes the archive monthly, so digs move once a month; the check runs every day). New
+   works are linked to segments and appended to `works_segments.parquet`. A source that cannot be reached keeps the
+   previous build's rows. The road card's "last 12 months" flags follow at once; the model's dig features count whole
+   calendar years, so they change when the year turns.
+4. **Never touches** the OpenStreetMap road network, flood zones, wards or DfT counts (no `--refresh` to the OSM ingest).
+5. **Re-scores with the frozen models** in `data/models` (no retraining), rebuilds the Southampton prevention plan
    and what-if plans, the Brighton inspection list, and triages **new** open reports only (Gemini over the same
    model fallback list, cached in `outputs/lane_c/triage_<city>.json`; keyword rules without `GEMINI_API_KEY`).
 
@@ -108,15 +121,21 @@ against simply re-using last year's reports. Ranges are 95% paired segment boots
 
 | Test | Model | Last year's reports | Difference | Model ahead in |
 |---|---|---|---|---|
-| **Brighton 2023–25** (802 reports) | 31.2% (27.2–34.8) | 21.7% (18.6–26.4) | +9.5 (+4.9 to +12.2) | 100% |
-| **Southampton 2018–19** (381 reports, 262 on non-main roads) | 41.6% (33.9–47.9) | 33.7% (24.5–38.9) | +7.9 (+3.1 to +15.5) | 100% |
-| Leave-one-city-out: Southampton | 36.6% | 33.5% | +3.1 (+0.9 to +8.1) | 99% |
-| Leave-one-city-out: Brighton | 18.4% | 16.5% | +1.9 (−3.0 to +6.0) | 76% |
-| Leave-one-city-out: Portsmouth | 19.2% | 13.1% | +6.2 (−3.8 to +12.7) | 84% |
-| Frozen 2026 check, Southampton (33 reports) | 15.2% | 12.1% | +3.0 (−12.1 to +14.8) | 52% |
+| **Brighton 2023–25** (802 reports) | 31.8% (27.9–35.6) | 21.7% (18.6–26.4) | +10.1 (+5.6 to +12.9) | 100% |
+| **Southampton 2018–19** (381 reports, 262 on non-main roads) | 37.1% (29.7–43.9) | 33.7% (24.5–38.9) | +3.4 (−1.0 to +11.5) | 94% |
+| Leave-one-city-out: Southampton | 34.8% | 33.5% | +1.3 (−0.9 to +6.0) | 94% |
+| Leave-one-city-out: Brighton | 19.5% | 16.5% | +3.0 (−2.1 to +7.7) | 89% |
+| Leave-one-city-out: Portsmouth | 19.9% | 13.1% | +6.8 (−3.6 to +13.8) | 87% |
+| Frozen 2026 check, Southampton (33 reports) | 21.2% | 12.1% | +9.1 (−7.4 to +24.0) | 78% |
+
+Model = the model with building sites and utility digs as inputs (since 18 Oct). Before they were added it scored
+Brighton 31.2% and Southampton 41.6% (+7.9, +3.1 to +15.5) on the same test years; the paired difference for adding
+them is +0.6 (−2.2 to +3.7) in Brighton and −4.5 (−7.4 to −1.1) in Southampton (`reports/context_eval.md`).
+Set `risk.context_features: false` in `config/synthetic.yaml` and re-run `make train plan_risk plan` to go back.
 
 What this does and doesn't show:
-- With a city's own history, the model beats last year's reports in both cities tested.
+- With a city's own history, the model beats last year's reports clearly in Brighton; in Southampton it is ahead in
+  94% of resamples but the interval now includes 0 (it excluded 0 before building sites and digs were added).
 - In a city it has never seen, it is only roughly level with last year's reports: it needs local history.
 - Without past-report features (physical inputs only) it is no better than chance in Southampton (10.4%), so we
   don't offer it as a cold-start fallback.
@@ -159,6 +178,8 @@ Everything public is real. The only synthetic parts are records the council alre
 | Road wear, resurfacing history, streetlight register and faults, crew outcomes | `data/synthetic/` (seed 2026) | **SYNTHETIC** |
 | Treatment £/m² | our assumptions | Assumption, labelled in the app |
 | Brighton map | real-label model with real FixMyStreet history | Real (`uses_synthetic = false`); yearly scale assumed (`scale_source`) |
+| Building sites near a road | brownfield land registers (planning.data.gov.uk) and OpenStreetMap `landuse=construction` | Real; model input (registers) and map/card flags |
+| Utility and highway digs on a road | DfT Street Manager open data, completed works, mid-2020 on | Real; model input and card flags |
 
 Every synthetic row carries `is_synthetic = true` and a `source = "synthetic:<generator>@<version>"` tag, and every
 screen that uses one shows a **SYNTHETIC** badge. The dashboard header reads "trained on real reports · history
@@ -179,6 +200,9 @@ All data was retrieved during the hackathon (16–18 Oct 2026). Exact retrieval 
 | **Open-Meteo** | Historical weekly weather (rain, freeze–thaw) and 3-week forecast | Historical: TODO check range in `data/processed/sources.json`; forecast retrieved 17 Oct 2026, 12:36 UTC | Data CC BY 4.0. Weather data by Open-Meteo.com. Free API used for non-commercial purposes |
 | **MapIt** (mySociety) | Ward boundaries, Southampton and Brighton | Retrieved 17 Oct 2026, 12:06 UTC | Boundaries derived from OS Boundary-Line, OGL v3.0. Contains OS data © Crown copyright and database right |
 | **ONS ward boundaries** | Ward boundaries, Portsmouth (MapIt free quota ran out mid-hackathon) | December 2024 ward boundaries, retrieved 17 Oct 2026, 15:05 UTC | Source: Office for National Statistics, licensed under OGL v3.0. Contains OS data © Crown copyright and database right |
+| **DfT Street Manager open data** (permit archive, `opendata.manage-roadworks.service.gov.uk`) | Completed utility and highway works on each road (`roadsense.ingest.streetworks`) | July 2020 onwards, monthly; read Oct 2026, nothing raw kept | Open Government Licence v3.0 |
+| **Brownfield land registers** via planning.data.gov.uk | Housing and development sites with permission dates near each road (`roadsense.ingest.construction`) | Brighton 253 sites; Southampton 37 (last updated 2017). Retrieved 18 Oct 2026 | Open Government Licence v3.0 |
+| **OpenStreetMap** `landuse=construction` (Overpass API) | Building sites active now, both cities | Retrieved 18 Oct 2026 | © OpenStreetMap contributors, ODbL 1.0 |
 | **Google Gemini API** | Report triage (classification, draft work orders) | Model fallback list `gemini-3.8-flash` → `gemini-3-flash-preview` → `gemini-flash-latest` | Gemini API terms. Only public FixMyStreet text and synthetic data are sent |
 
 ### Figures quoted in the pitch (not model inputs)

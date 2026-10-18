@@ -5,7 +5,7 @@ CITY ?= Southampton
 CITIES ?= Southampton Brighton Portsmouth
 SCENARIO ?= rain_then_frost
 
-.PHONY: help ingest features synthetic train predict plan_risk plan whatif lights serve retrain triage-eval cost demo-check test all
+.PHONY: help ingest features synthetic train predict plan_risk plan whatif lights serve retrain triage-eval cost demo-check test all context context-eval
 
 help:  ## list every target
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/ :/'
@@ -59,6 +59,14 @@ cost:  ## lane C: reports/cost.md from the token log
 
 demo-check:  ## lane C: dry run of the 6 demo steps and 4 failure cases
 	$(PY) -m roadsense.api.demo_check
+
+context:  ## building sites (brownfield registers, OSM) and utility digs (DfT Street Manager, ~1 GB a month streamed), linked to segments
+	$(PY) -m roadsense.ingest.construction
+	$(PY) -m roadsense.ingest.streetworks
+	$(PY) -m roadsense.features.works_context
+
+context-eval:  ## held-out check: do building sites or utility digs help the ranking? (reports/context_eval.md)
+	$(PY) -m roadsense.models.context_eval
 
 test:  ## pytest (small fixtures, no network)
 	$(PY) -m pytest -q
