@@ -1,106 +1,134 @@
 # RoadSense: weekly pothole prevention for Southampton
 
-> Draft for the merge PR (README.md is a shared file, so it changes only at a merge). Written by lane 3 on
-> 17 Oct 2026 from the three branches as they stood at lane-a-data `e4e6dc3`, lane-b-models `1496843`,
-> lane-c-product (this branch). Re-check the numbers after Merge 3.
+> Submission README text, checked against `main` at 81d6e10 (18 Oct 2026). The repository's `README.md` is the
+> canonical, fuller version (daily refresh details, privacy, full source table); this draft must not disagree with it.
 
-RoadSense helps Southampton's highways officers decide which streets to treat this week, before potholes
-form. It scores every council road segment on pothole risk from heavy-vehicle load, bus routes, flood areas
-and freeze-thaw weather, explains each score, and produces a ranked weekly prevention list with a treatment
-and its cost logic for an officer to approve. It also flags streetlights due for replacement and triages
-public FixMyStreet reports into draft work orders.
+RoadSense helps Southampton's highways officers decide which streets to treat this week, before potholes form. It
+scores every council road segment on pothole risk from heavy-vehicle load, bus routes, flood areas, building sites,
+utility digs, freeze-thaw weather and past pothole history, explains each score, and ranks a weekly prevention list
+with a treatment and its cost logic for an officer to approve. Gemini triages public FixMyStreet reports into draft
+work orders. A Brighton view runs the same model on 100% real inputs.
+
+## What it does
+
+- **Prevention plan** (Southampton): the top 50 road segments ranked by reactive repair cost avoided per £ of
+  treatment, each with a suggested treatment and the reasons behind its ranking. Two views: **All roads**, and
+  **Worth treating** (the treatment pays for itself over its service life, or the road has a confirmed pothole). A
+  **What-if** menu (rain then frost, wet week, cold snap) shows which roads would rise.
+- **Road card**: click a row or the map for urgency, the four forecast weeks, reasons, traffic confidence, treatment
+  and cost logic, recent street works, and a "Treated <date>" flag when the council's own scheme lists show the road
+  was resurfaced in the last 2 years (display only).
+- **Report triage** (Southampton): real FixMyStreet reports are classified (Gemini, with a keyword fallback),
+  attached to a road segment, de-duplicated, and turned into draft work orders that an officer approves or rejects.
+  Recording a crew outcome re-scores the road.
+- **Building sites and utility digs** (both cities): roads within 150 m of a building site (brownfield land registers,
+  OpenStreetMap construction sites) and roads dug up in the last 12 months (DfT Street Manager) are flagged on the
+  plan, the inspection list and the road card, and building sites are on the map. Both are also inputs to the risk
+  model since 18 Oct.
+- **Brighton inspection list**: the same model with real FixMyStreet history. Open reports from the last 120 days
+  first, then the 50 roads with the highest predicted risk. No wear model or £ for Brighton.
+- **Streetlights** (Southampton, synthetic demo data): lamps due for replacement within 90 days and lamps currently
+  dark.
+- **Daily refresh**: `python -m roadsense.refresh` pulls new FixMyStreet reports, the weather forecast, building
+  sites and street works, re-scores with the frozen models, validates, and only then switches the app over. The
+  header shows when the data was last updated.
+- The side panel is resizable (drag the divider next to the map), with light and dark themes.
 
 ## Setup
 
-Python 3.11 (geospatial wheels install most cleanly on 3.11).
-
 ```bash
-py -3.11 -m venv .venv            # macOS/Linux: python3.11 -m venv .venv
+python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env            # then add GEMINI_API_KEY (optional: triage falls back to keyword rules)
+copy .env.example .env            # add GEMINI_API_KEY (optional: triage falls back to keyword rules)
+python -m roadsense.api           # open http://127.0.0.1:8000
+pytest -q                         # contract + unit tests, no network
 ```
 
-Run the officer page with `make serve` (or `python -m roadsense.api`) and open http://127.0.0.1:8000.
-The pipeline in order: `make ingest`, `make features`, `make synthetic`, `make train`, `make lights`, `make plan`.
-Every number we tune lives in `config.yaml`, `config/synthetic.yaml` and `roadsense/prevent/prevent.yaml`.
-Tests: `pytest` (small fixtures, no network).
+Data retrieved during the event is cached in the repo, so no download is needed to run the app. Full pipeline:
+`make all` (ingest, features, synthetic, train, plan_risk, synthetic, lights, plan). Every tunable number is in
+`config.yaml`, `config/synthetic.yaml` and `roadsense/prevent/prevent.yaml`.
 
 ## Data sources
 
-Real data, from `data/processed/sources.json` (lane A). Every screen shows these with their retrieval date.
+All retrieved during the hackathon (16 to 18 Oct 2026); exact timestamps in `data/processed/sources.json`, and the app
+footer lists every source with its retrieval date.
 
-| Source | Used for | Licence | Retrieved | Data date |
-| --- | --- | --- | --- | --- |
-| OpenStreetMap | road segments, bus stops, bus routes, junctions, cycle routes, schools and hospitals | ODbL 1.0, © OpenStreetMap contributors | 17 Oct 2026 12:03 | 2026-10-17 |
-| MapIt (mySociety) ward boundaries | 17 wards (May 2023), coverage check | OGL v3, contains OS data © Crown copyright | 17 Oct 2026 12:06 | May 2023 boundaries |
-| DfT road traffic statistics | HGV and bus load (`esal_day`) | OGL v3 | 17 Oct 2026 12:22 | count years up to 2025 |
-| Open-Meteo | rain, freeze-thaw, rain-then-frost; 16-day forecast | CC BY 4.0, free tier, non-commercial | 17 Oct 2026 12:36 | to 2026-11-01 23:00 |
-| Environment Agency Flood Map for Planning | `in_flood_area` (Flood Zone 3, rivers and sea) | OGL v3 | 17 Oct 2026 12:45 | 2026-10-17 |
-| FixMyStreet (mySociety) | real pothole labels, live open-report layer, report triage | public reports; credit mySociety | 17 Oct 2026 11:00 | latest report 2026-09-05 |
-| Google Gemini API | report triage (classification, work-order drafting) | Gemini API terms; free tier may use prompts, so only public reports and synthetic data are sent | n/a | model `gemini-3.8-flash` |
+| Source | Used for | Licence |
+| --- | --- | --- |
+| FixMyStreet (mySociety), Open311 API | real pothole reports: training and test labels, open-report layer, triage | no licence stated; attributed to mySociety |
+| OpenStreetMap | road segments, bus routes, junctions, cycle routes, schools and hospitals; construction sites | ODbL 1.0, © OpenStreetMap contributors |
+| DfT road traffic statistics | HGV and bus load (314 Southampton segments counted, road-class medians elsewhere) | OGL v3 |
+| Environment Agency Flood Map for Planning | Flood Zone 3 exposure | OGL v3 |
+| Open-Meteo | weather history and 16-day forecast | CC BY 4.0 |
+| MapIt (mySociety) / ONS | ward boundaries (ONS for Portsmouth) | OGL v3, contains OS data © Crown copyright |
+| DfT Street Manager open data | completed utility and highway works, mid-2020 on | OGL v3 |
+| Brownfield land registers (planning.data.gov.uk) | development sites near each road | OGL v3 |
+| Google Gemini API | report triage | Gemini API terms; only public report text and synthetic data are sent |
 
-Repair cost figures: planned £56.94 vs reactive £87.80 per pothole (ALARM 2025, Asphalt Industry Alliance).
-Treatment costs per m² are our assumptions and are labelled as such in the app.
-
-Not used: UKHO tides, Defra UK-AIR (not relevant to road wear), Southampton VTS cruise schedules (no clear link in the time).
-Bournemouth (BCP) was dropped: the council takes no FixMyStreet reports.
+Repair cost figures: planned £56.94 vs reactive £87.80 per pothole (ALARM 2025). Treatment costs per m² are our
+assumptions and are labelled as such in the app. Bournemouth (BCP) was dropped: the council takes no FixMyStreet
+reports.
 
 ## What is synthetic, and why
 
-Council-held records could not be obtained before Sunday 13:00, so lane B generates them (seed 2026) on the real
-segments, weather and load. Every synthetic row carries `is_synthetic=true` and a `source="synthetic:<generator>@<version>"`
-tag, and every screen that uses one shows a **SYNTHETIC** badge.
+Council-held records are not public, so we generate stand-ins (seed 2026) on the real segments, weather and load.
+Every synthetic row carries `is_synthetic=true` and a `source="synthetic:<generator>@<version>"` tag, and every screen
+that uses one shows a **SYNTHETIC** badge.
 
-| File | Replaces |
+| Synthetic | Replaces |
 | --- | --- |
-| `data/synthetic/resurfacing.csv` | resurfacing and surface-dressing history |
-| `data/synthetic/potholes.csv` | the pothole repair log (yearly totals match Southampton's FOI figures; where and when within a year is synthetic) |
-| `data/synthetic/streetlights.csv`, `light_faults.csv` | the lighting asset register and fault history |
-| `data/synthetic/crew_outcomes.csv` | inspection results for the feedback loop |
+| pothole repair log | the council's repair log (yearly totals match Southampton's FOI figures; where and when is synthetic) |
+| resurfacing history and road wear | the council's surface records |
+| streetlight register and faults | the lighting asset register |
+| crew outcomes | inspection results |
 
-The live plan's risk ranking is **trained on real FixMyStreet reports**; only its recent pothole history (mapped
-from the synthetic repair log, because real 2020-26 reports are too thin), road wear and the lighting register are
-synthetic. The dashboard says "trained on real reports · history synthetic". The weekly weather model is trained on
-synthetic labels, so its accuracy is a pipeline check, not proof; the real-data tests are below. Every assumption is in
-`config/synthetic.yaml` and `DATA_GAPS.md`.
+The plan's risk ranking is **trained on real FixMyStreet reports**; in Southampton its recent pothole history comes
+from the synthetic repair log, because real reports there stop after 2019. The header says "trained on real reports ·
+history synthetic". The What-if menu uses a weekly weather model trained on synthetic labels, so it is a pipeline
+check, not proof. Brighton uses no synthetic data. Every assumption is in `config/synthetic.yaml` and `DATA_GAPS.md`.
 
 ## How well it works
 
-- **Real FixMyStreet test, Southampton 2018-19 (381 reports):** the real-label model (trained on Southampton,
-  Brighton and Portsmouth) put 37.1% of the next year's reports on the top 10% of road length (95% interval 29.7% to
-  43.9%) against 33.7% for "last year's reports" (24.5% to 38.9%). Paired difference +3.4 points (-1.0 to 11.5); the
-  model was ahead in 94% of 1,000 bootstrap resamples. Source: `reports/real_risk_eval.md`.
-- **Brighton 2023-25 (802 reports):** 31.8% (27.9% to 35.6%) against 21.7% for last year's reports, +10.1 points
-  (5.6 to 12.9).
-- **Building sites and utility digs** (brownfield registers, OpenStreetMap, DfT Street Manager) are model inputs since
-  18 Oct. On the same test years they moved Brighton +0.6 points (-2.2 to 3.7) and Southampton -4.5 (-7.4 to -1.1)
-  against the model without them (Brighton 31.2%, Southampton 41.6%). Source: `reports/context_eval.md`.
-- **Second-city test (leave one city out, trained without that city):** Southampton 34.8% vs 33.5% (+1.3, -0.9 to 6.0);
-  Brighton 19.5% vs 16.5% (+3.0, -2.1 to 7.7); Portsmouth 19.9% vs 13.1% (+6.8, -3.6 to 13.8). Ahead in all three,
-  clearly in none.
-- **Frozen 2026 check (Jan to Oct, 33 Southampton reports):** model 21.2% vs last-year baseline 12.1% (+9.1, -7.4 to
-  24.0), so no clear difference at that sample size. We report it anyway.
-- **Weekly weather model on synthetic labels (time split, used for week-to-week movement and the what-if):** PR-AUC 0.253 for 30-day risk vs 0.095 for prior pothole
-  count and 0.036 for road age. Pipeline check only. Source: `reports/risk_eval.md`.
-- **Streetlights:** the Weibull model ranks no better than install year (precision in the top 5%: 0.039 vs
-  0.036); its value is the replacement date. Source: `reports/lights_eval.md`.
-- **Report triage:** keyword rules classify 91 of 100 hand-labelled real reports correctly
-  (`reports/triage_vs_keywords.md`). The Gemini comparison is still to run in full (free-tier quota).
-- **Running cost:** `reports/cost.md` (measured token counts; prices and volumes are assumptions).
+All on real FixMyStreet reports the model never saw: the share of a test year's reports that land on the model's top
+10% of road length (chance = 10%), against re-using last year's reports. 95% paired segment bootstrap, 1,000
+resamples. Source: `reports/real_risk_eval.md`.
+
+| Test | Model | Last year's reports | Difference | Model ahead in |
+|---|---|---|---|---|
+| **Brighton 2023-25** (802 reports) | 31.8% (27.9-35.6) | 21.7% (18.6-26.4) | +10.1 (+5.6 to +12.9) | 100% |
+| **Southampton 2018-19** (381 reports) | 37.1% (29.7-43.9) | 33.7% (24.5-38.9) | +3.4 (-1.0 to +11.5) | 94% |
+| Leave-one-city-out: Southampton | 34.8% | 33.5% | +1.3 (-0.9 to +6.0) | 94% |
+| Leave-one-city-out: Brighton | 19.5% | 16.5% | +3.0 (-2.1 to +7.7) | 89% |
+| Leave-one-city-out: Portsmouth | 19.9% | 13.1% | +6.8 (-3.6 to +13.8) | 87% |
+| Frozen 2026 check, Southampton (33 reports) | 21.2% | 12.1% | +9.1 (-7.4 to +24.0) | 78% |
+
+- Brighton is the clear result. Southampton is ahead in 94% of resamples, but the range includes zero, so it is
+  "ahead, not proven".
+- Building sites and utility digs don't help on held-out years: +0.6 points in Brighton (-2.2 to +3.7) and -4.5 in
+  Southampton (-7.4 to -1.1) against the model without them (`reports/context_eval.md`). They stay in at the team's
+  decision.
+- In a city it has never seen, the model is only roughly level with last year's reports, and without past-report
+  features it falls to 10.4% in Southampton: it needs local history.
+- Streetlights: the Weibull model ranks no better than install year (`reports/lights_eval.md`); its value is the
+  replacement date.
+- Report triage: keyword rules get 91 of 100 real reports right (`reports/triage_vs_keywords.md`, labels drafted by
+  Claude Code from the titles); the Gemini comparison has not been run.
+- Running cost: about £0.00056 per triaged report, under £3 a year even at Southampton's full yearly repair volume
+  (`reports/cost.md`; token counts measured, prices and volumes assumed).
 
 ## AI-generated code
 
-All code in this repository was written with Claude Code (Anthropic), run by three team members, one per lane:
-data (lane A), models (lane B), product (lane C). Every commit made through Claude Code carries a
-`Co-Authored-By: Claude` line. Team members chose the approach, reviewed and ran the code, checked the data and made
-the decisions recorded in `STATUS.md` and `DATA_GAPS.md`.
+All code in this repository was written with Claude Code (Anthropic), run by team members, one per part: data,
+models, product. Commits made through Claude Code carry a `Co-Authored-By: Claude` line. Team members chose the
+approach, reviewed and ran the code, checked the data and made the decisions recorded in `STATUS.md` and
+`DATA_GAPS.md`.
 
 ## What existed before the event
 
-Nothing. The repository was created after hacking opened on Friday 16 October 2026 at 20:00; its first commit is
-`5efc5de` at 12:08 on Saturday 17 October 2026.
+Nothing. The repository was created after hacking opened on Friday 16 October 2026 at 20:00; its first commit is at
+12:08 on Saturday 17 October 2026.
 
 ## Who helped
 
-_To fill in by the team: names and roles (lane A data, lane B models, lane C product), plus anyone else who helped._
+_To fill in by the team: names and roles, plus anyone else who helped._
