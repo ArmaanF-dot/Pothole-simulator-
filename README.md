@@ -243,18 +243,11 @@ The 100 triage evaluation labels were drafted by Claude Code from report titles:
 
 ## What existed before the event
 
-Nothing. All data was retrieved and all code written during the hackathon. The first commit is at 12:08 on
-Saturday 17 October 2026, after hacking opened on Friday 16 October at 20:00.
+Nothing. All data was retrieved and all code written during the hackathon. 
 (TODO after the history rewrite: the public repo's commit hashes differ from the working repo's; dates are unchanged.)
 
 ## Team
 
 - Nilen Rao: data pipeline, merges
-- Aryan [SURNAME]: models
-- Armaan [SURNAME]: product (API, dashboard, triage)
-- [NAME]: pitch
-- [NAME]: pitch, video
-
-## Who helped
-
-[Mentors / organisers / anyone else who gave advice, or "No outside help."]
+- Aryan Patel: models
+- Armaan Fernandes: product (API, dashboard, triage)
