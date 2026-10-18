@@ -82,8 +82,14 @@ What it does, per city (Southampton, Brighton):
 2. **Open-Meteo:** refreshes the forecast weeks (16-day forecast; `past_days=92` supplies the 90-day windows), at
    each ward's point from the committed `data/processed/ward_points_<city>.csv`. The refresh never reads `data/raw/`
    (not committed), so it runs from a fresh clone.
-3. **Never touches** OpenStreetMap, flood zones, wards or DfT counts (no `--refresh` to the OSM ingest).
-4. **Re-scores with the frozen models** in `data/models` (no retraining), rebuilds the Southampton prevention plan
+3. **Building sites and street works:** once a UTC day, re-reads the brownfield land registers (planning.data.gov.uk)
+   and OpenStreetMap `landuse=construction` sites, and checks DfT Street Manager for any month published since the
+   newest one stored (DfT publishes the archive monthly, so digs move once a month; the check runs every day). New
+   works are linked to segments and appended to `works_segments.parquet`. A source that cannot be reached keeps the
+   previous build's rows. The road card's "last 12 months" flags follow at once; the model's dig features count whole
+   calendar years, so they change when the year turns.
+4. **Never touches** the OpenStreetMap road network, flood zones, wards or DfT counts (no `--refresh` to the OSM ingest).
+5. **Re-scores with the frozen models** in `data/models` (no retraining), rebuilds the Southampton prevention plan
    and what-if plans, the Brighton inspection list, and triages **new** open reports only (Gemini over the same
    model fallback list, cached in `outputs/lane_c/triage_<city>.json`; keyword rules without `GEMINI_API_KEY`).
 

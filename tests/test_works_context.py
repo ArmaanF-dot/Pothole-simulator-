@@ -130,3 +130,11 @@ def test_prevention_report_endpoint(tmp_path):
     assert r["modelled"] is True and r["uses_synthetic"] is True and "no_prevention" in r["scenarios"]
     assert app.get("/context/evaluation").status_code == 200
     assert app.get("/context/sites").json()["sites"] == []
+
+
+def test_streetworks_new_months_only_after_latest():
+    from datetime import datetime, timezone
+    have = {"2026-08", "2026-09"}
+    assert SW.latest_months(have, datetime(2026, 10, 18, tzinfo=timezone.utc)) == []
+    assert SW.latest_months(have, datetime(2026, 11, 2, tzinfo=timezone.utc)) == ["2026-10"]
+    assert SW.latest_months(have, datetime(2027, 3, 1, tzinfo=timezone.utc)) == ["2026-10", "2026-11"]  # at most 2 a run

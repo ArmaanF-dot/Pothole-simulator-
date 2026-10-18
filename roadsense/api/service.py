@@ -302,7 +302,7 @@ class Service:
             self._works_ctx = {}
         if city not in self._works_ctx:
             from roadsense.features import works_context as WC
-            sites, links, works = WC.load_linked(str(self.root))
+            sites, links, works = WC.load_linked(processed_dir=str(I.resolve(self.cfg, "processed_dir", self.root)))
             as_of = self.risk_meta.get("as_of") if city == self.cfg["coverage"]["city"] else self.city_view(city).meta.get("as_of")
             self._works_ctx[city] = WC.current(city, as_of or self.risk_meta.get("as_of"), sites, links, works)
         return self._works_ctx[city]

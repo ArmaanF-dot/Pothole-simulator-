@@ -144,6 +144,32 @@ def step_weather(get_json, cfg_a: dict, stage: Path, cities: list[str], now: dat
     return counts
 
 
+def step_context(stage: Path, now: datetime, prev_info: dict, prev_name: str | None, online: bool = True) -> dict:
+    """Building sites (brownfield registers + OpenStreetMap, once a UTC day) and DfT Street Manager works (any month
+    published since the last one we have; DfT publishes monthly), re-linked to segments. A source that cannot be
+    reached keeps the previous build's rows, so this step never fails the refresh."""
+    from roadsense.features import works_context as WC
+    from roadsense.ingest import construction, streetworks
+    proc = stage / "data" / "processed"
+    out = {}
+    if not online:  # a test or offline run with an injected fetcher: keep the previous build's rows
+        out["sites"] = {"skipped": "offline run (injected fetcher)"}
+    elif prev_info.get("context_pulled_on") == now.date().isoformat():
+        out["sites"] = {"skipped": f"already pulled today in {prev_name}"}
+    else:
+        try:
+            df = construction.build(str(proc / "construction_sites.csv"), str(proc / "segments.parquet"))
+            out["sites"] = {c: int(n) for c, n in df.groupby("city").size().items()}
+        except Exception as e:  # noqa: BLE001
+            out["sites"] = {"kept_previous": f"{type(e).__name__}: {e}"}
+        try:
+            out["street_works"] = streetworks.update_linked(str(proc), now=now)
+        except Exception as e:  # noqa: BLE001
+            out["street_works"] = {"kept_previous": f"{type(e).__name__}: {e}"}
+    out["site_links"] = WC.relink_sites(str(proc))
+    return out
+
+
 def _triage_cache(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -237,6 +263,13 @@ def refresh(cities: list[str] | None = None, dry_run: bool = False, now: datetim
         info["weather"] = step_weather(get_json, cfg_a, stage, cities, now)
         say(f"  Open-Meteo forecast: { {c: v['weeks'] for c, v in info['weather'].items()} }")
         check_weather(as_of, cities, stage)
+        info["context"] = step_context(stage, now, prev_info, prev.name if prev is not None else None,
+                                       online=get_json is fetch.http_get_json)
+        if "skipped" not in info["context"].get("sites", {}):
+            info["context_pulled_on"] = now.date().isoformat()
+        else:
+            info["context_pulled_on"] = prev_info.get("context_pulled_on")
+        say(f"  building sites and street works: {info['context']}")
         if client == "auto":
             from roadsense.agent.triage import gemini_client
             client = gemini_client()
