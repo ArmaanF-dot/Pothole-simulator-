@@ -83,8 +83,18 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; pa
 .banner .credit { color: inherit; font-weight: 400; }
 
 /* layout */
-main { flex: 1; display: grid; grid-template-columns: minmax(380px, 46%) 1fr; min-height: 0; }
-#panel { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
+main { --panel-default: minmax(380px, 46%); flex: 1; display: grid; grid-template-columns: var(--panel-w, var(--panel-default)) 9px 1fr;
+  min-height: 0; }
+/* drag handle between the side panel and the map (width saved per browser) */
+#resizer { position: relative; cursor: col-resize; background: var(--panel); border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+  touch-action: none; z-index: var(--z-map-ui); transition: background-color .15s; }
+#resizer::after { content: ""; position: absolute; left: 50%; top: 50%; width: 3px; height: 36px; margin: -18px 0 0 -1.5px; border-radius: 2px;
+  background: var(--line-2); transition: background-color .15s; }
+#resizer:hover, #resizer:focus-visible, body.resizing #resizer { background: var(--accent-soft); outline: none; }
+#resizer:hover::after, #resizer:focus-visible::after, body.resizing #resizer::after { background: var(--accent); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing #map { pointer-events: none; }
+#panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); }
 .panel-body { flex: 1; overflow: auto; padding: 0 16px 20px; scroll-behavior: smooth; }
 
 /* tabs: segmented control */
@@ -222,7 +232,7 @@ footer summary .attrib { margin-left: auto; }
 .other-city .home-only { display: none !important; }
 
 @media (max-width: 1200px) {
-  main { grid-template-columns: minmax(380px, 52%) 1fr; }
+  main { --panel-default: minmax(380px, 52%); }
   table.rows td, table.rows thead th { padding-left: 4px; padding-right: 4px; }
   .vb { white-space: normal; }
 }
@@ -233,6 +243,7 @@ footer summary .attrib { margin-left: auto; }
 @media (max-width: 800px) {
   body { height: auto; min-height: 100dvh; }
   main { grid-template-columns: 1fr; grid-template-rows: 48dvh auto; }
+  #resizer { display: none; }
   #mapwrap { order: -1; }
   #panel { border-right: 0; }
   .panel-body { overflow: visible; padding: 0 12px 16px; }
